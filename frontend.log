@@ -1,0 +1,31 @@
+
+> face-recognition-attendance@0.1.0 dev
+> next dev --turbopack
+
+ ⚠ Port 3000 is in use by process 22131, using available port 3004 instead.
+   ▲ Next.js 15.5.4 (Turbopack)
+   - Local:        http://localhost:3004
+   - Network:      http://10.49.25.134:3004
+
+ ✓ Starting...
+ ✓ Compiled middleware in 59ms
+ ✓ Ready in 769ms
+ ○ Compiling /class/[id] ...
+ ✓ Compiled /class/[id] in 1926ms
+ ⚠ Unsupported metadata viewport is configured in metadata export in /class/[id]. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /class/3DR02gf90PIP3VdjFJv4 200 in 2608ms
+ ✓ Compiled /dashboard in 220ms
+ ⚠ Unsupported metadata viewport is configured in metadata export in /dashboard. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /dashboard 200 in 245ms
+ ⚠ Unsupported metadata viewport is configured in metadata export in /class/[id]. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /class/bDQ7Dx6OCaeyTYG5qV5v 200 in 48ms
+ ✓ Compiled /attendance/[classId] in 197ms
+ ⚠ Unsupported metadata viewport is configured in metadata export in /attendance/[classId]. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /attendance/bDQ7Dx6OCaeyTYG5qV5v 200 in 443ms
+ ⚠ Unsupported metadata viewport is configured in metadata export in /attendance/[classId]. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /attendance/bDQ7Dx6OCaeyTYG5qV5v 200 in 51ms
