@@ -9,9 +9,13 @@ import os
 
 class EmbeddingService:
     def __init__(self):
-        """Initialize the embedding service"""
+        """Initialize the embedding service with improved settings"""
         self.embeddings_cache = {}
         self.cache_file = "embeddings_cache.pkl"
+        # Use CNN model for better accuracy (slower but more accurate than HOG)
+        self.face_detection_model = "cnn"  # Can be "hog" or "cnn"
+        # Number of times to upsample the image for better face detection
+        self.num_jitters = 10  # Increased from default 1 for better accuracy
         self._load_cache()
     
     def _load_cache(self):
@@ -34,9 +38,9 @@ class EmbeddingService:
         except Exception as e:
             print(f"Error saving embeddings cache: {e}")
     
-    def preprocess_image(self, image_data: bytes) -> Optional[np.ndarray]:
+    def preprocess_image(self, image_data: bytes, enhance: bool = True) -> Optional[np.ndarray]:
         """
-        Preprocess image data for face recognition
+        Preprocess image data for face recognition with enhancements
         Returns RGB image array or None if processing fails
         """
         try:
@@ -50,40 +54,76 @@ class EmbeddingService:
             # Convert to numpy array
             image_array = np.array(image)
             
+            # Apply image enhancements for better face detection
+            if enhance:
+                # Resize if image is too large (for faster processing)
+                max_dimension = 1600
+                height, width = image_array.shape[:2]
+                if max(height, width) > max_dimension:
+                    scale = max_dimension / max(height, width)
+                    new_width = int(width * scale)
+                    new_height = int(height * scale)
+                    image_array = cv2.resize(image_array, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                    print(f"Resized image from {width}x{height} to {new_width}x{new_height}")
+                
+                # Improve contrast using CLAHE (Contrast Limited Adaptive Histogram Equalization)
+                lab = cv2.cvtColor(image_array, cv2.COLOR_RGB2LAB)
+                l, a, b = cv2.split(lab)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                l = clahe.apply(l)
+                lab = cv2.merge([l, a, b])
+                image_array = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+                print("Applied contrast enhancement")
+            
             return image_array
             
         except Exception as e:
             print(f"Error preprocessing image: {e}")
             return None
     
-    def extract_face_encoding(self, image_data: bytes) -> Optional[np.ndarray]:
+    def extract_face_encoding(self, image_data: bytes, num_jitters: Optional[int] = None) -> Optional[np.ndarray]:
         """
-        Extract face encoding from image data
+        Extract face encoding from image data with improved accuracy
         Returns 128-dimensional face encoding or None if no face found
         """
         try:
-            # Preprocess image
-            image_array = self.preprocess_image(image_data)
+            if num_jitters is None:
+                num_jitters = self.num_jitters
+            
+            # Preprocess image with enhancements
+            image_array = self.preprocess_image(image_data, enhance=True)
             if image_array is None:
                 return None
             
-            # Find face locations
-            face_locations = face_recognition.face_locations(image_array)
+            # Find face locations using the configured model
+            face_locations = face_recognition.face_locations(
+                image_array, 
+                model=self.face_detection_model
+            )
             
             if not face_locations:
                 print("No faces found in image")
                 return None
             
             if len(face_locations) > 1:
-                print(f"Multiple faces found ({len(face_locations)}), using the first one")
+                print(f"Multiple faces found ({len(face_locations)}), using the largest one")
+                # Select the largest face (most prominent in the image)
+                face_locations = [max(face_locations, key=lambda loc: (loc[2] - loc[0]) * (loc[1] - loc[3]))]
             
-            # Extract face encodings
-            face_encodings = face_recognition.face_encodings(image_array, face_locations)
+            # Extract face encodings with jittering for better accuracy
+            # num_jitters: How many times to re-sample the face when calculating encoding
+            # Higher is more accurate, but slower
+            face_encodings = face_recognition.face_encodings(
+                image_array, 
+                face_locations,
+                num_jitters=num_jitters
+            )
             
             if not face_encodings:
                 print("Could not generate face encoding")
                 return None
             
+            print(f"Successfully extracted face encoding with {num_jitters} jitters")
             # Return the first face encoding
             return face_encodings[0]
             
@@ -115,7 +155,7 @@ class EmbeddingService:
     
     def find_best_match(self, known_encodings: Dict[str, np.ndarray], unknown_encoding: np.ndarray, tolerance: float = 0.6) -> Dict[str, Any]:
         """
-        Find the best match for an unknown face encoding
+        Find the best match for an unknown face encoding with improved matching logic
         Returns dict with match info: {matched: bool, student_id: str, confidence: float}
         """
         try:
@@ -126,37 +166,51 @@ class EmbeddingService:
             student_ids = list(known_encodings.keys())
             encodings = list(known_encodings.values())
             
-            # Compare faces
-            matches = self.compare_faces(encodings, unknown_encoding, tolerance=tolerance)
+            # Calculate distances (lower is better)
             distances = self.face_distance(encodings, unknown_encoding)
             
-            # Find the best match
-            if any(matches):
-                # Get the index of the best match (lowest distance among matches)
-                match_indices = [i for i, match in enumerate(matches) if match]
-                best_match_index = min(match_indices, key=lambda i: distances[i])
-                
-                student_id = student_ids[best_match_index]
-                confidence = 1.0 - distances[best_match_index]  # Convert distance to confidence
-                
-                return {
-                    "matched": True,
-                    "student_id": student_id,
-                    "confidence": float(confidence)
-                }
-            else:
-                # No matches found, but return the closest one with low confidence
-                if distances:
-                    best_index = np.argmin(distances)
-                    confidence = 1.0 - distances[best_index]
-                    
+            # Find the best match (lowest distance)
+            best_index = np.argmin(distances)
+            best_distance = distances[best_index]
+            best_student_id = student_ids[best_index]
+            
+            # Convert distance to confidence (0-1 scale, higher is better)
+            confidence = 1.0 - best_distance
+            
+            # Apply stricter tolerance check
+            # Lower tolerance = more strict matching (better accuracy, fewer false positives)
+            is_match = best_distance <= tolerance
+            
+            print(f"Best match: {best_student_id}, distance: {best_distance:.3f}, confidence: {confidence:.3f}, threshold: {tolerance}")
+            
+            if is_match:
+                # Additional confidence check - ensure confidence is reasonably high
+                min_confidence_threshold = 0.5  # Require at least 50% confidence
+                if confidence >= min_confidence_threshold:
                     return {
-                        "matched": False,
-                        "student_id": student_ids[best_index],
-                        "confidence": float(confidence)
+                        "matched": True,
+                        "student_id": best_student_id,
+                        "confidence": float(confidence),
+                        "distance": float(best_distance)
                     }
                 else:
-                    return {"matched": False, "student_id": None, "confidence": 0.0}
+                    print(f"Match rejected: confidence {confidence:.3f} below threshold {min_confidence_threshold}")
+                    return {
+                        "matched": False,
+                        "student_id": best_student_id,
+                        "confidence": float(confidence),
+                        "distance": float(best_distance),
+                        "reason": "Low confidence"
+                    }
+            else:
+                print(f"No match: best distance {best_distance:.3f} exceeds tolerance {tolerance}")
+                return {
+                    "matched": False,
+                    "student_id": best_student_id,
+                    "confidence": float(confidence),
+                    "distance": float(best_distance),
+                    "reason": "Distance exceeds tolerance"
+                }
             
         except Exception as e:
             print(f"Error finding best match: {e}")

@@ -22,7 +22,10 @@ export default function AttendancePage() {
   }, []);
   const [isScanning, setIsScanning] = useState(false);
   const [scanComplete, setScanComplete] = useState(false);
+  const [recognizedCount, setRecognizedCount] = useState(0);
   const webcamRef = useRef<any>(null);
+  const scanIntervalRef = useRef<any>(null);
+  const recognizedStudentsRef = useRef<Set<string>>(new Set());
   const router = useRouter();
   const params = useParams();
   const classId = params.classId as string;
@@ -168,11 +171,14 @@ export default function AttendancePage() {
     }
   };
 
-  // Real-time face recognition scanning
+  // Real-time face recognition scanning with manual control
   const startFaceRecognition = async () => {
     if (!classData) return;
     
     setIsScanning(true);
+    setScanComplete(false);
+    recognizedStudentsRef.current = new Set();
+    setRecognizedCount(0);
     toast.loading('Starting face recognition scan...', { id: 'scan' });
 
     try {
@@ -182,26 +188,22 @@ export default function AttendancePage() {
         throw new Error('Model training failed. Cannot proceed with recognition.');
       }
 
-      toast.loading('Scanning for faces... Look at the camera!', { id: 'scan' });
+      toast.loading('Scanning for faces... Look at the camera! Click "Stop Scan" when done.', { id: 'scan' });
 
-      // Scan for faces every 2 seconds for 30 seconds
-      const scanDuration = 30000; // 30 seconds
+      // Scan for faces every 2 seconds continuously until manually stopped
       const scanInterval = 2000; // 2 seconds
-      const maxScans = scanDuration / scanInterval;
-      let scanCount = 0;
-      const recognizedStudents = new Set<string>();
 
-      const scanInterval_id = setInterval(async () => {
+      scanIntervalRef.current = setInterval(async () => {
         try {
-          scanCount++;
-          console.log(`Scan ${scanCount}/${maxScans} - Starting recognition...`);
+          console.log(`Scanning for faces...`);
 
           const result = await recognizeFace();
-          console.log(`Scan ${scanCount} result:`, result);
+          console.log(`Scan result:`, result);
           
           if (result?.matched && result.studentId) {
-            if (!recognizedStudents.has(result.studentId)) {
-              recognizedStudents.add(result.studentId);
+            if (!recognizedStudentsRef.current.has(result.studentId)) {
+              recognizedStudentsRef.current.add(result.studentId);
+              setRecognizedCount(recognizedStudentsRef.current.size);
               
               // Mark student as present in local state
               setAttendanceRecords(prev => 
@@ -225,15 +227,9 @@ export default function AttendancePage() {
             console.log('No face match found in this scan');
           }
 
-          // Update scan progress
-          const progress = (scanCount / maxScans) * 100;
-          toast.loading(`Scanning... ${progress.toFixed(0)}% complete (${recognizedStudents.size} students found)`, { id: 'scan' });
+          // Update scan status
+          toast.loading(`Scanning... ${recognizedStudentsRef.current.size} students found. Click "Stop Scan" when done.`, { id: 'scan' });
 
-          if (scanCount >= maxScans) {
-            clearInterval(scanInterval_id);
-            setScanComplete(true);
-            toast.success(`Scan complete! ${recognizedStudents.size} students marked present.`, { id: 'scan' });
-          }
         } catch (error: any) {
           console.error('Scan error:', error);
           // Continue scanning even if one frame fails
@@ -241,21 +237,31 @@ export default function AttendancePage() {
         }
       }, scanInterval);
 
-      // Stop scanning after duration
-      setTimeout(() => {
-        clearInterval(scanInterval_id);
-        setScanComplete(true);
-        if (scanCount < maxScans) {
-          toast.success(`Scan complete! ${recognizedStudents.size} students marked present.`, { id: 'scan' });
-        }
-      }, scanDuration);
-
     } catch (error: any) {
       toast.error(`Face recognition failed: ${error.message}`, { id: 'scan' });
-    } finally {
       setIsScanning(false);
     }
   };
+
+  // Stop face recognition scanning manually
+  const stopFaceRecognition = () => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    setIsScanning(false);
+    setScanComplete(true);
+    toast.success(`Scan stopped! ${recognizedStudentsRef.current.size} students marked present.`, { id: 'scan' });
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+      }
+    };
+  }, []);
 
   const toggleStudentAttendance = (studentId: string) => {
     setAttendanceRecords(prev => 
@@ -511,7 +517,8 @@ export default function AttendancePage() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      <p className="text-sm">Scanning faces...</p>
+                      <p className="text-sm font-semibold">Scanning faces...</p>
+                      <p className="text-xs mt-1">{recognizedCount} students found</p>
                     </div>
                   </div>
                 )}
@@ -545,34 +552,84 @@ export default function AttendancePage() {
                   </div>
                 </motion.button>
 
-                {/* Scan Button */}
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={startFaceRecognition}
-                  disabled={isScanning || scanComplete}
-                  className="w-full py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isScanning ? (
-                    <div className="flex items-center justify-center">
-                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Scanning...
-                    </div>
-                  ) : scanComplete ? (
-                    'Scan Complete ✓'
-                  ) : (
+                {/* Scan Buttons */}
+                {!isScanning && !scanComplete && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={startFaceRecognition}
+                    className="w-full py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  >
                     <div className="flex items-center justify-center">
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
                       Start Face Scan
                     </div>
-                  )}
-                </motion.button>
+                  </motion.button>
+                )}
+
+                {isScanning && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={stopFaceRecognition}
+                    className="w-full py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
+                  >
+                    <div className="flex items-center justify-center">
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                      </svg>
+                      Stop Scan ({recognizedCount} found)
+                    </div>
+                  </motion.button>
+                )}
+
+                {scanComplete && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => {
+                      setScanComplete(false);
+                      setRecognizedCount(0);
+                    }}
+                    className="w-full py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-green-500 hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                  >
+                    <div className="flex items-center justify-center">
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Scan Complete ✓ - Scan Again
+                    </div>
+                  </motion.button>
+                )}
               </div>
+
+              {/* Instructions */}
+              {!isScanning && !scanComplete && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md"
+                >
+                  <div className="flex">
+                    <svg className="flex-shrink-0 h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div className="ml-3">
+                      <p className="text-sm text-blue-800 font-medium mb-1">How to use:</p>
+                      <ol className="text-xs text-blue-700 list-decimal list-inside space-y-1">
+                        <li>Click "Train Model" first (only needed once)</li>
+                        <li>Click "Start Face Scan" to begin</li>
+                        <li>Position students in front of camera</li>
+                        <li>Click "Stop Scan" when all students are marked</li>
+                        <li>Manually adjust if needed, then save</li>
+                      </ol>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
 
               {scanComplete && (
                 <motion.div
@@ -586,7 +643,7 @@ export default function AttendancePage() {
                     </svg>
                     <div className="ml-3">
                       <p className="text-sm text-green-800">
-                        Face scan completed successfully! You can now manually adjust attendance if needed.
+                        Face scan completed! Found {recognizedCount} students. You can manually adjust attendance below if needed.
                       </p>
                     </div>
                   </div>

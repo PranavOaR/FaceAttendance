@@ -9,7 +9,9 @@ class RecognitionService:
         """Initialize recognition service with Firebase and embedding services"""
         self.firebase = firebase_service
         self.embeddings = embedding_service
-        self.recognition_threshold = 0.6  # Confidence threshold for recognition
+        # Lower threshold = more strict matching = better accuracy, fewer false positives
+        # Default: 0.6 (standard), 0.5 (strict), 0.4 (very strict)
+        self.recognition_threshold = 0.5  # Stricter threshold for better accuracy
     
     async def train_class_embeddings(self, class_id: str, students: List[Dict[str, Any]]) -> int:
         """

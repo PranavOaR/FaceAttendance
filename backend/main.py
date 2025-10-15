@@ -373,6 +373,71 @@ async def get_teacher_summary(teacher_id: str):
         print(f"Error getting teacher summary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get summary: {str(e)}")
 
+@app.get("/config")
+async def get_config():
+    """Get current recognition configuration"""
+    try:
+        return {
+            "recognition_threshold": recognition_service.recognition_threshold,
+            "face_detection_model": embedding_service.face_detection_model,
+            "num_jitters": embedding_service.num_jitters,
+            "description": {
+                "recognition_threshold": "Lower value = stricter matching (0.4=very strict, 0.5=strict, 0.6=standard)",
+                "face_detection_model": "cnn=more accurate but slower, hog=faster but less accurate",
+                "num_jitters": "Higher value = better accuracy but slower (1=fast, 5=balanced, 10=accurate)"
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/config/threshold")
+async def update_threshold(threshold: float):
+    """Update recognition threshold (0.0-1.0, lower = stricter)"""
+    try:
+        if not 0.0 <= threshold <= 1.0:
+            raise HTTPException(status_code=400, detail="Threshold must be between 0.0 and 1.0")
+        
+        recognition_service.set_recognition_threshold(threshold)
+        return {
+            "success": True,
+            "message": f"Recognition threshold updated to {threshold}",
+            "threshold": threshold
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/config/model")
+async def update_model(model: str):
+    """Update face detection model (cnn or hog)"""
+    try:
+        if model not in ["cnn", "hog"]:
+            raise HTTPException(status_code=400, detail="Model must be 'cnn' or 'hog'")
+        
+        embedding_service.face_detection_model = model
+        return {
+            "success": True,
+            "message": f"Face detection model updated to {model}",
+            "model": model
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/config/jitters")
+async def update_jitters(jitters: int):
+    """Update number of jitters for encoding (1-20, higher = more accurate but slower)"""
+    try:
+        if not 1 <= jitters <= 20:
+            raise HTTPException(status_code=400, detail="Jitters must be between 1 and 20")
+        
+        embedding_service.num_jitters = jitters
+        return {
+            "success": True,
+            "message": f"Number of jitters updated to {jitters}",
+            "jitters": jitters
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     # Run the server
     uvicorn.run(
