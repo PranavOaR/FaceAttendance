@@ -12,14 +12,14 @@ export const metadata: Metadata = {
   description: "Modern attendance tracking system using face recognition technology",
   keywords: ["attendance", "face recognition", "education", "student management"],
   authors: [{ name: "Face Recognition Attendance Team" }],
-  viewport: "width=device-width, initial-scale=1",
   icons: {
-    icon: [
-      { url: '/favicon.png', sizes: 'any' },
-      { url: '/favicon.png', type: 'image/png' },
-    ],
-    apple: '/favicon.png',
+    icon: '/favicon.ico',
   },
+};
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 import { AuthProvider } from '@/hooks/useAuth';

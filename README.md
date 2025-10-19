@@ -148,13 +148,43 @@ interface Student {
 - Face recognition simulation
 - CSV export functionality
 
+## � Deployment
+
+### Quick Deploy
+
+The project includes automated deployment scripts for Firebase Hosting (frontend) and Google Cloud Run (backend).
+
+```bash
+# One-command deployment
+./deploy.sh
+```
+
+For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+
+### Deployment Architecture
+
+- **Frontend**: Firebase Hosting (static Next.js export)
+- **Backend**: Google Cloud Run (containerized Python FastAPI)
+- **Database**: Firebase Firestore
+- **Storage**: Firebase Storage
+- **Authentication**: Firebase Authentication
+
+### Prerequisites for Deployment
+
+1. Firebase CLI: `npm install -g firebase-tools`
+2. Google Cloud CLI: `brew install --cask google-cloud-sdk`
+3. Firebase project configured
+4. Google Cloud project linked
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete guide.
+
 ## 🔮 Future Enhancements
 
-- [ ] Firebase Authentication & Firestore Database
-- [ ] Real-time face recognition API integration
-- [ ] Advanced analytics and reporting
 - [ ] Mobile app (React Native)
-- [ ] Dark mode support
+- [ ] Batch photo upload for students
+- [ ] Email notifications for attendance reports
+- [ ] Multi-language support
+- [ ] Advanced analytics dashboard
 
 ## 📄 License
 
