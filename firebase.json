@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "out",
+    "public": ".next",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -8,11 +8,8 @@
     ],
     "rewrites": [
       {
-        "source": "/api/**",
-        "run": {
-          "serviceId": "face-recognition-backend",
-          "region": "us-central1"
-        }
+        "source": "**",
+        "destination": "/index.html"
       }
     ]
   }
