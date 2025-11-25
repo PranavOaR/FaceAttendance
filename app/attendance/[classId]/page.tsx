@@ -69,7 +69,21 @@ export default function AttendancePage() {
   const isLoading = authLoading || classLoading || studentsLoading;
 
   // Backend API configuration
-  const BACKEND_URL = 'http://127.0.0.1:8000';
+  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+  
+  // Check backend connectivity
+  const checkBackendConnection = async () => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/health`, {
+        method: 'GET',
+        timeout: 5000
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Backend connection check failed:', error);
+      return false;
+    }
+  };
 
   // Train the face recognition model for this class
   const trainFaceRecognition = async () => {
@@ -78,16 +92,31 @@ export default function AttendancePage() {
     toast.loading('Training face recognition model...', { id: 'train' });
     
     try {
+      // First check if backend is reachable
+      const isConnected = await checkBackendConnection();
+      if (!isConnected) {
+        throw new Error(
+          `Backend server is not running. Please start it with: cd backend && python -m uvicorn main:app --reload --port 8000`
+        );
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
       const response = await fetch(`${BACKEND_URL}/train`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ classId }),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        throw new Error(`Training failed: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Training failed: ${response.statusText}. ${errorText}`);
       }
 
       const result = await response.json();
@@ -95,7 +124,17 @@ export default function AttendancePage() {
       return true;
     } catch (error: any) {
       console.error('Training error:', error);
-      toast.error(`Training failed: ${error.message}`, { id: 'train' });
+      
+      if (error.name === 'AbortError') {
+        toast.error('Training request timed out. The backend may be slow or overloaded.', { id: 'train' });
+      } else if (error.message.includes('Failed to fetch') || error.message.includes('not running')) {
+        toast.error(
+          'Cannot connect to backend server. Make sure it is running on port 8000.',
+          { id: 'train', duration: 5000 }
+        );
+      } else {
+        toast.error(`Training failed: ${error.message}`, { id: 'train' });
+      }
       return false;
     }
   };
@@ -116,6 +155,9 @@ export default function AttendancePage() {
 
       console.log(`Captured image from webcam: ${imageSrc.substring(0, 50)}...`);
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
       // Send to backend for recognition
       const response = await fetch(`${BACKEND_URL}/recognize`, {
         method: 'POST',
@@ -126,8 +168,10 @@ export default function AttendancePage() {
           classId,
           image_base64: imageSrc
         }),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
       console.log('Recognition response status:', response.status);
 
       if (!response.ok) {
@@ -140,6 +184,10 @@ export default function AttendancePage() {
       console.log('Recognition result:', result);
       return result;
     } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.error('Recognition timeout:', error);
+        throw new Error('Recognition took too long to respond');
+      }
       console.error('Recognition error:', error);
       throw error;
     }
@@ -148,6 +196,9 @@ export default function AttendancePage() {
   // Mark attendance for a recognized student
   const markStudentAttendance = async (studentId: string) => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       const response = await fetch(`${BACKEND_URL}/mark_attendance`, {
         method: 'POST',
         headers: {
@@ -157,7 +208,10 @@ export default function AttendancePage() {
           classId,
           studentId
         }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`Failed to mark attendance: ${response.statusText}`);
@@ -166,8 +220,14 @@ export default function AttendancePage() {
       const result = await response.json();
       return result;
     } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.error('Mark attendance timeout:', error);
+        // Don't throw - continue scanning
+        return null;
+      }
       console.error('Mark attendance error:', error);
-      throw error;
+      // Don't throw - continue scanning even if marking fails
+      return null;
     }
   };
 
@@ -233,13 +293,30 @@ export default function AttendancePage() {
         } catch (error: any) {
           console.error('Scan error:', error);
           // Continue scanning even if one frame fails
-          toast.error(`Scan error: ${error.message}`, { duration: 2000 });
+          if (error.message.includes('timeout') || error.message.includes('too long')) {
+            // Silent timeout - don't show error toast every time
+            console.warn('Scan frame timeout, continuing...');
+          } else {
+            toast.error(`Scan error: ${error.message}`, { duration: 2000 });
+          }
         }
       }, scanInterval);
 
     } catch (error: any) {
-      toast.error(`Face recognition failed: ${error.message}`, { id: 'scan' });
       setIsScanning(false);
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+      
+      if (error.message.includes('not running')) {
+        toast.error(
+          'Backend server is not running. Start it with: python -m uvicorn main:app --reload --port 8000',
+          { id: 'scan', duration: 6000 }
+        );
+      } else {
+        toast.error(`Face recognition failed: ${error.message}`, { id: 'scan' });
+      }
     }
   };
 
