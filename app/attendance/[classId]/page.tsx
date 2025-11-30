@@ -73,7 +73,6 @@ export default function AttendancePage() {
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
   
   // Check backend connectivity
-  // Check backend connectivity
   const checkBackendConnection = async () => {
     try {
       const controller = new AbortController();
@@ -83,12 +82,6 @@ export default function AttendancePage() {
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
-      return response.ok;
-    try {
-      const response = await fetch(`${BACKEND_URL}/health`, {
-        method: 'GET',
-        timeout: 5000
-      });
       return response.ok;
     } catch (error) {
       console.error('Backend connection check failed:', error);
@@ -289,7 +282,7 @@ export default function AttendancePage() {
 
       // Update toast to scanning status
       toast.loading('Scanning for faces... Look at the camera! Click "Stop Scan" when done.', { id: 'scan' });
-
+      
       // Scan for faces every 2 seconds continuously until manually stopped
       const scanInterval = 2000; // 2 seconds
 
