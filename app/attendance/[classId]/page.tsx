@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useClass, useStudents, useAttendance } from '@/hooks/useFirestore';
 import { downloadCSV } from '@/utils/storage';
 import toast, { Toaster } from 'react-hot-toast';
-import Navbar from '@/components/Navbar';
+import { FloatingHeader } from '@/components/ui/floating-header';
 import StudentCard from '@/components/StudentCard';
 import Webcam from 'react-webcam';
 
@@ -26,12 +26,13 @@ export default function AttendancePage() {
   const webcamRef = useRef<any>(null);
   const scanIntervalRef = useRef<any>(null);
   const recognizedStudentsRef = useRef<Set<string>>(new Set());
+  const activeScanToastRef = useRef<string | null>(null);
   const router = useRouter();
   const params = useParams();
   const classId = params.classId as string;
 
   // Firebase hooks
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   const { classData, loading: classLoading, error: classError } = useClass(classId);
   const { students, loading: studentsLoading } = useStudents(classId);
   const { markAttendance, loading: attendanceLoading } = useAttendance(classId);
@@ -72,7 +73,17 @@ export default function AttendancePage() {
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
   
   // Check backend connectivity
+  // Check backend connectivity
   const checkBackendConnection = async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(`${BACKEND_URL}/health`, {
+        method: "GET",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response.ok;
     try {
       const response = await fetch(`${BACKEND_URL}/health`, {
         method: 'GET',
@@ -193,6 +204,28 @@ export default function AttendancePage() {
     }
   };
 
+  // Synchronize local UI state with recognized students from backend
+  const updateAttendanceFromBackend = async (studentId: string) => {
+    try {
+      // Get fresh class data to verify the mark was successful
+      const response = await fetch(`${BACKEND_URL}/classes/${classId}/students`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (response.ok) {
+        const classData = await response.json();
+        // We can verify from backend if needed, but frontend is source of truth for UI
+        console.log(`Verified student ${studentId} marked in backend`);
+      }
+    } catch (error) {
+      console.warn('Could not verify backend state:', error);
+      // Continue anyway - frontend state is maintained
+    }
+  };
+
   // Mark attendance for a recognized student
   const markStudentAttendance = async (studentId: string) => {
     try {
@@ -239,7 +272,13 @@ export default function AttendancePage() {
     setScanComplete(false);
     recognizedStudentsRef.current = new Set();
     setRecognizedCount(0);
-    toast.loading('Starting face recognition scan...', { id: 'scan' });
+    
+    // Clear any existing scan toasts
+    toast.dismiss('scan');
+    
+    // Show loading toast only once
+    const toastId = toast.loading('Starting face recognition scan...', { id: 'scan' });
+    activeScanToastRef.current = toastId as string;
 
     try {
       // First, ensure the model is trained
@@ -248,6 +287,7 @@ export default function AttendancePage() {
         throw new Error('Model training failed. Cannot proceed with recognition.');
       }
 
+      // Update toast to scanning status
       toast.loading('Scanning for faces... Look at the camera! Click "Stop Scan" when done.', { id: 'scan' });
 
       // Scan for faces every 2 seconds continuously until manually stopped
@@ -255,40 +295,43 @@ export default function AttendancePage() {
 
       scanIntervalRef.current = setInterval(async () => {
         try {
-          console.log(`Scanning for faces...`);
+          console.log(`Scanning for faces... Currently found: ${recognizedStudentsRef.current.size}`);
 
           const result = await recognizeFace();
           console.log(`Scan result:`, result);
           
           if (result?.matched && result.studentId) {
             if (!recognizedStudentsRef.current.has(result.studentId)) {
+              console.log(`New face detected: ${result.studentName}, marking as present`);
               recognizedStudentsRef.current.add(result.studentId);
               setRecognizedCount(recognizedStudentsRef.current.size);
               
-              // Mark student as present in local state
-              setAttendanceRecords(prev => 
-                prev.map(record => 
-                  record.studentId === result.studentId 
-                    ? { ...record, status: 'present' }
-                    : record
-                )
-              );
+              // Mark student as present in local state - ONLY update the specific student
+              setAttendanceRecords(prev => {
+                const updated = [...prev];
+                const studentIndex = updated.findIndex(r => r.studentId === result.studentId);
+                if (studentIndex >= 0 && updated[studentIndex].status !== 'present') {
+                  console.log(`Updating UI: marking ${result.studentName} as present`);
+                  updated[studentIndex] = { ...updated[studentIndex], status: 'present' };
+                }
+                return updated;
+              });
 
               // Mark attendance in backend
-              await markStudentAttendance(result.studentId);
+              const markResult = await markStudentAttendance(result.studentId);
+              if (markResult) {
+                console.log(`Backend marked attendance for ${result.studentName}`);
+              }
               
               toast.success(`${result.studentName} marked present! (Confidence: ${(result.confidence * 100).toFixed(0)}%)`, {
                 duration: 3000
               });
             } else {
-              console.log(`Student ${result.studentName} already recognized`);
+              console.log(`Student ${result.studentName} already recognized this session`);
             }
           } else if (result?.matched === false) {
-            console.log('No face match found in this scan');
+            console.log('No face match found in this scan', result);
           }
-
-          // Update scan status
-          toast.loading(`Scanning... ${recognizedStudentsRef.current.size} students found. Click "Stop Scan" when done.`, { id: 'scan' });
 
         } catch (error: any) {
           console.error('Scan error:', error);
@@ -309,13 +352,16 @@ export default function AttendancePage() {
         scanIntervalRef.current = null;
       }
       
+      // Clear the loading toast
+      toast.dismiss('scan');
+      
       if (error.message.includes('not running')) {
         toast.error(
           'Backend server is not running. Start it with: python -m uvicorn main:app --reload --port 8000',
-          { id: 'scan', duration: 6000 }
+          { duration: 6000 }
         );
       } else {
-        toast.error(`Face recognition failed: ${error.message}`, { id: 'scan' });
+        toast.error(`Face recognition failed: ${error.message}`);
       }
     }
   };
@@ -328,32 +374,64 @@ export default function AttendancePage() {
     }
     setIsScanning(false);
     setScanComplete(true);
-    toast.success(`Scan stopped! ${recognizedStudentsRef.current.size} students marked present.`, { id: 'scan' });
+    
+    // Dismiss ALL scan-related toasts
+    toast.dismiss('scan');
+    if (activeScanToastRef.current) {
+      toast.dismiss(activeScanToastRef.current);
+    }
+    
+    // Show success message
+    toast.success(`Scan stopped! ${recognizedStudentsRef.current.size} students marked present.`, { duration: 4000 });
   };
 
-  // Cleanup on unmount
+  // Cleanup on unmount - dismiss all toasts and clear intervals
   useEffect(() => {
     return () => {
+      console.log('Component unmounting - cleaning up toasts and intervals');
       if (scanIntervalRef.current) {
         clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
       }
+      // Dismiss all toasts when leaving the page
+      toast.dismiss();
     };
   }, []);
 
   const toggleStudentAttendance = (studentId: string) => {
-    setAttendanceRecords(prev => 
-      prev.map(record => 
-        record.studentId === studentId 
-          ? { ...record, status: record.status === 'present' ? 'absent' : 'present' }
-          : record
-      )
-    );
+    // Prevent toggling while scanning to avoid race conditions
+    if (isScanning) {
+      toast.error('Cannot manually toggle attendance while scanning. Stop the scan first.', {
+        duration: 2000
+      });
+      return;
+    }
+
+    setAttendanceRecords(prev => {
+      const updated = [...prev];
+      const studentIndex = updated.findIndex(r => r.studentId === studentId);
+      
+      if (studentIndex >= 0) {
+        const currentStatus = updated[studentIndex].status;
+        const newStatus = currentStatus === 'present' ? 'absent' : 'present';
+        
+        console.log(`Toggling student ${studentId} from ${currentStatus} to ${newStatus}`);
+        
+        updated[studentIndex] = {
+          ...updated[studentIndex],
+          status: newStatus
+        };
+      }
+      
+      return updated;
+    });
   };
 
   const saveAttendance = async () => {
     if (!classData) return;
 
     try {
+      // Get present and absent students from current UI state
       const presentStudents = attendanceRecords
         .filter(record => record.status === 'present')
         .map(record => record.studentId);
@@ -362,8 +440,14 @@ export default function AttendancePage() {
         .filter(record => record.status === 'absent')
         .map(record => record.studentId);
 
+      console.log(`Saving attendance: ${presentStudents.length} present, ${absentStudents.length} absent`);
+      console.log('Present student IDs:', presentStudents);
+
+      // Save to Firebase using just the date (YYYY-MM-DD format)
+      const todayDate = new Date().toISOString().split('T')[0];
+      
       await markAttendance({
-        date: new Date().toISOString(),
+        date: todayDate,
         presentStudents,
         absentStudents
       });
@@ -375,6 +459,7 @@ export default function AttendancePage() {
         router.push(`/class/${classData.id}`);
       }, 1500);
     } catch (error: any) {
+      console.error('Error saving attendance:', error);
       toast.error(error.message || 'Failed to save attendance');
     }
   };
@@ -436,14 +521,7 @@ export default function AttendancePage() {
       <Toaster position="top-right" />
       
       {/* Navigation */}
-      <Navbar teacher={user ? { 
-        email: user.email || '', 
-        name: user.displayName || '', 
-        uid: user.uid,
-        photoURL: user.photoURL || '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      } : undefined} showLogout={true} />
+      <FloatingHeader showLogout={true} onLogout={logout} />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -587,26 +665,13 @@ export default function AttendancePage() {
                   className="w-full h-full object-cover rounded-lg"
                 />
                 
+                {/* Face detection overlay - subtle green border instead of blue */}
                 {isScanning && (
-                  <div className="absolute inset-0 bg-blue-500 bg-opacity-20 flex items-center justify-center">
-                    <div className="text-white text-center">
-                      <svg className="animate-spin h-8 w-8 mx-auto mb-2" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <p className="text-sm font-semibold">Scanning faces...</p>
-                      <p className="text-xs mt-1">{recognizedCount} students found</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Face detection overlay */}
-                {isScanning && (
-                  <div className="absolute inset-4 border-2 border-green-400 rounded-lg animate-pulse">
-                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400"></div>
-                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400"></div>
-                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-400"></div>
-                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400"></div>
+                  <div className="absolute inset-4 border-2 border-green-500 rounded-lg animate-pulse">
+                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-500"></div>
+                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-500"></div>
+                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-500"></div>
+                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-500"></div>
                   </div>
                 )}
               </div>

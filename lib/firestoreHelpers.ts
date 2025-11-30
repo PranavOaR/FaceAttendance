@@ -458,16 +458,49 @@ export const deleteStudent = async (classId: string, studentId: string): Promise
 // ===== ATTENDANCE OPERATIONS =====
 
 /**
- * Add an attendance record
+ * Add an attendance record to the class document
  */
 export const addAttendanceRecord = async (classId: string, attendanceData: Omit<Attendance, 'id' | 'classId'>): Promise<string> => {
   try {
-    const docRef = await addDoc(collection(db, COLLECTIONS.CLASSES, classId, COLLECTIONS.ATTENDANCE), {
-      ...attendanceData,
-      classId,
-      createdAt: serverTimestamp()
-    });
-    return docRef.id;
+    const classRef = doc(db, COLLECTIONS.CLASSES, classId);
+    const classDoc = await getDoc(classRef);
+    
+    if (!classDoc.exists()) {
+      throw new Error('Class not found');
+    }
+    
+    const classData = classDoc.data() as Class;
+    const attendanceRecords = classData.attendanceRecords || [];
+    
+    // Check if a record for today already exists
+    const today = attendanceData.date;
+    const existingRecordIndex = attendanceRecords.findIndex(r => r.date === today);
+    
+    if (existingRecordIndex !== -1) {
+      // Update existing record for today
+      console.log(`Updating existing attendance record for ${today}`);
+      attendanceRecords[existingRecordIndex] = {
+        ...attendanceRecords[existingRecordIndex],
+        ...attendanceData,
+        id: attendanceRecords[existingRecordIndex].id || `record_${today}`
+      };
+    } else {
+      // Create new record
+      console.log(`Creating new attendance record for ${today}`);
+      const newRecord = {
+        id: `record_${today}`,
+        classId,
+        ...attendanceData
+      };
+      attendanceRecords.push(newRecord);
+    }
+    
+    // Update class document
+    await updateDoc(classRef, { attendanceRecords });
+    
+    console.log(`Saved ${attendanceData.presentStudents?.length || 0} present and ${attendanceData.absentStudents?.length || 0} absent for ${today}`);
+    
+    return `record_${today}`;
   } catch (error) {
     console.error('Error adding attendance record:', error);
     throw error;
@@ -475,24 +508,40 @@ export const addAttendanceRecord = async (classId: string, attendanceData: Omit<
 };
 
 /**
- * Get all attendance records for a class
+ * Get all attendance records for a class from the class document
  */
 export const getClassAttendance = async (classId: string): Promise<Attendance[]> => {
   try {
-    const q = query(
-      collection(db, COLLECTIONS.CLASSES, classId, COLLECTIONS.ATTENDANCE),
-      orderBy('date', 'desc')
-    );
+    const classRef = doc(db, COLLECTIONS.CLASSES, classId);
+    const classDoc = await getDoc(classRef);
     
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      date: convertTimestamp(doc.data().date)
-    })) as Attendance[];
+    if (!classDoc.exists()) {
+      return [];
+    }
+    
+    const classData = classDoc.data() as Class;
+    const attendanceRecords = classData.attendanceRecords || [];
+    
+    console.log(`Found ${attendanceRecords.length} attendance records for class ${classId}`);
+    
+    // Convert to Attendance type and sort by date descending
+    return attendanceRecords
+      .map((record: any, index: number) => ({
+        id: record.id || `record_${index}`,
+        date: record.date,
+        presentStudents: record.presentStudents || [],
+        absentStudents: record.absentStudents || [],
+        classId: classId,
+        ...record
+      }))
+      .sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        return dateB - dateA; // Descending order (most recent first)
+      }) as Attendance[];
   } catch (error) {
     console.error('Error getting class attendance:', error);
-    throw error;
+    return [];
   }
 };
 

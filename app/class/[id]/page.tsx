@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useClass, useStudents } from '@/hooks/useFirestore';
 import { migrateStudentsToClassArray, debugClassStudents } from '@/lib/migration';
 import toast, { Toaster } from 'react-hot-toast';
-import Navbar from '@/components/Navbar';
+import { FloatingHeader } from '@/components/ui/floating-header';
 import StudentCard from '@/components/StudentCard';
 import AddStudentModal from '@/components/AddStudentModal';
 
@@ -26,7 +26,7 @@ export default function ClassPage() {
   const classId = params.id as string;
 
   // Firebase hooks
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   const { classData, loading: classLoading, error: classError } = useClass(classId);
   const { 
     students, 
@@ -157,14 +157,7 @@ export default function ClassPage() {
       <Toaster position="top-right" />
       
       {/* Navigation */}
-      <Navbar teacher={user ? { 
-        email: user.email || '', 
-        name: user.displayName || '', 
-        uid: user.uid,
-        photoURL: user.photoURL || '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      } : undefined} showLogout={true} />
+      <FloatingHeader showLogout={true} onLogout={logout} />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useClasses } from '@/hooks/useFirestore';
 import { getDashboardSummary, DashboardSummary } from '@/lib/analytics';
 import toast, { Toaster } from 'react-hot-toast';
-import Navbar from '@/components/Navbar';
+import { FloatingHeader } from '@/components/ui/floating-header';
 import ClassCard from '@/components/ClassCard';
 import AddClassModal from '@/components/AddClassModal';
 import { LoadingState, LoadingSkeleton, ErrorState, EmptyState } from '@/components/LoadingStates';
@@ -28,7 +28,7 @@ export default function DashboardPage() {
   }, []);
   
   // Firebase hooks
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   const { 
     classes, 
     loading: classesLoading, 
@@ -148,14 +148,7 @@ export default function DashboardPage() {
   if (classesError) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <Navbar teacher={user ? { 
-          email: user.email || '', 
-          name: user.displayName || '', 
-          uid: user.uid,
-          photoURL: user.photoURL || '',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        } : undefined} showLogout={true} />
+        <FloatingHeader showLogout={true} onLogout={logout} />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <ErrorState 
             title="Failed to Load Classes"
@@ -172,14 +165,7 @@ export default function DashboardPage() {
       <Toaster position="top-right" />
       
       {/* Navigation */}
-      <Navbar teacher={user ? { 
-        email: user.email || '', 
-        name: user.displayName || '', 
-        uid: user.uid,
-        photoURL: user.photoURL || '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      } : undefined} showLogout={true} />
+      <FloatingHeader showLogout={true} onLogout={logout} />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

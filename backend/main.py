@@ -8,11 +8,30 @@ import json
 import base64
 import numpy as np
 from datetime import datetime
+import sys
+import warnings
 
-# Import our utility modules
-from utils.firebase_utils import FirebaseService
-from utils.embeddings import EmbeddingService
-from utils.recognition import RecognitionService
+# Suppress warnings
+warnings.filterwarnings('ignore')
+
+# Import our utility modules with error handling
+try:
+    from utils.firebase_utils import FirebaseService
+except Exception as e:
+    print(f"Warning: Could not import FirebaseService: {e}", file=sys.stderr)
+    FirebaseService = None
+
+try:
+    from utils.embeddings import EmbeddingService
+except Exception as e:
+    print(f"Warning: Could not import EmbeddingService: {e}", file=sys.stderr)
+    EmbeddingService = None
+
+try:
+    from utils.recognition import RecognitionService
+except Exception as e:
+    print(f"Warning: Could not import RecognitionService: {e}", file=sys.stderr)
+    RecognitionService = None
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -30,10 +49,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize services
-firebase_service = FirebaseService()
-embedding_service = EmbeddingService()
-recognition_service = RecognitionService(firebase_service, embedding_service)
+# Initialize services with error handling
+firebase_service = None
+embedding_service = None
+recognition_service = None
+
+if FirebaseService:
+    try:
+        firebase_service = FirebaseService()
+        print("✓ Firebase service initialized")
+    except Exception as e:
+        print(f"✗ Failed to initialize Firebase service: {e}")
+        firebase_service = None
+
+if EmbeddingService:
+    try:
+        embedding_service = EmbeddingService()
+        print("✓ Embedding service initialized")
+    except Exception as e:
+        print(f"✗ Failed to initialize Embedding service: {e}")
+        embedding_service = None
+
+if RecognitionService and firebase_service and embedding_service:
+    try:
+        recognition_service = RecognitionService(firebase_service, embedding_service)
+        print("✓ Recognition service initialized")
+    except Exception as e:
+        print(f"✗ Failed to initialize Recognition service: {e}")
+        recognition_service = None
 
 # Pydantic models for request/response
 class TrainRequest(BaseModel):

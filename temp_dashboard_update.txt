@@ -1,0 +1,16 @@
+Replace "import Navbar from '@/components/Navbar';" with "import { FloatingHeader } from '@/components/ui/floating-header';"
+
+Then replace the first occurrence of:
+<Navbar teacher={user ? { 
+        email: user.email || '', 
+        name: user.displayName || '', 
+        uid: user.uid,
+        photoURL: user.photoURL || '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      } : undefined} showLogout={true} />
+
+with:
+<FloatingHeader showLogout={true} onLogout={() => {}} />
+
+And also in the error state section.

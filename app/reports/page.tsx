@@ -8,7 +8,7 @@ import { useClasses } from '@/hooks/useFirestore';
 import { generateClassReport, exportReportAsCSV, DetailedReport } from '@/lib/analytics';
 import { exportReportAsExcel, exportSimpleCSV, downloadCSV } from '@/lib/exportUtils';
 import toast, { Toaster } from 'react-hot-toast';
-import Navbar from '@/components/Navbar';
+import { FloatingHeader } from '@/components/ui/floating-header';
 
 export default function ReportsPage() {
   const [selectedClass, setSelectedClass] = useState<string>('');
@@ -25,7 +25,7 @@ export default function ReportsPage() {
   const [showStudentDetails, setShowStudentDetails] = useState(false);
   
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   const { classes, loading: classesLoading } = useClasses(user?.email || '');
 
   // Check authentication
@@ -114,14 +114,7 @@ export default function ReportsPage() {
       <Toaster position="top-right" />
       
       {/* Navigation */}
-      <Navbar teacher={user ? { 
-        email: user.email || '', 
-        name: user.displayName || '', 
-        uid: user.uid,
-        photoURL: user.photoURL || '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      } : undefined} showLogout={true} />
+      <FloatingHeader showLogout={true} onLogout={logout} />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

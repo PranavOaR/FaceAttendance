@@ -1,11 +1,25 @@
-import face_recognition
+import sys
+import warnings
+import os
+
+# Suppress warnings
+warnings.filterwarnings('ignore')
+
+# Import real face_recognition library
+try:
+    import face_recognition
+    print("✓ Using real face_recognition library")
+except ImportError as e:
+    print(f"✗ face_recognition library not available: {e}")
+    print("Please install: pip install face-recognition face_recognition_models setuptools")
+    raise
+
 import numpy as np
 import cv2
 from PIL import Image
 import io
 from typing import Optional, List, Dict, Any
 import pickle
-import os
 
 class EmbeddingService:
     def __init__(self):
@@ -169,39 +183,31 @@ class EmbeddingService:
             # Calculate distances (lower is better)
             distances = self.face_distance(encodings, unknown_encoding)
             
+            # Clean up distances - remove inf and NaN values
+            distances = [float(d) if not (np.isnan(d) or np.isinf(d)) else 1.0 for d in distances]
+            
             # Find the best match (lowest distance)
             best_index = np.argmin(distances)
             best_distance = distances[best_index]
             best_student_id = student_ids[best_index]
             
             # Convert distance to confidence (0-1 scale, higher is better)
-            confidence = 1.0 - best_distance
+            # confidence = 1 - distance, so 0 distance = 1.0 confidence, 1.0 distance = 0.0 confidence
+            confidence = max(0.0, 1.0 - best_distance)
             
-            # Apply stricter tolerance check
-            # Lower tolerance = more strict matching (better accuracy, fewer false positives)
+            # Check if distance is within tolerance
             is_match = best_distance <= tolerance
             
             print(f"Best match: {best_student_id}, distance: {best_distance:.3f}, confidence: {confidence:.3f}, threshold: {tolerance}")
             
             if is_match:
-                # Additional confidence check - ensure confidence is reasonably high
-                min_confidence_threshold = 0.5  # Require at least 50% confidence
-                if confidence >= min_confidence_threshold:
-                    return {
-                        "matched": True,
-                        "student_id": best_student_id,
-                        "confidence": float(confidence),
-                        "distance": float(best_distance)
-                    }
-                else:
-                    print(f"Match rejected: confidence {confidence:.3f} below threshold {min_confidence_threshold}")
-                    return {
-                        "matched": False,
-                        "student_id": best_student_id,
-                        "confidence": float(confidence),
-                        "distance": float(best_distance),
-                        "reason": "Low confidence"
-                    }
+                print(f"Match accepted: {best_student_id} with confidence {confidence:.3f}")
+                return {
+                    "matched": True,
+                    "student_id": best_student_id,
+                    "confidence": float(confidence),
+                    "distance": float(best_distance)
+                }
             else:
                 print(f"No match: best distance {best_distance:.3f} exceeds tolerance {tolerance}")
                 return {
