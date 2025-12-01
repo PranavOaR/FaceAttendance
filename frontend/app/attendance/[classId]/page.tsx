@@ -27,6 +27,12 @@ export default function AttendancePage() {
   const scanIntervalRef = useRef<any>(null);
   const recognizedStudentsRef = useRef<Set<string>>(new Set());
   const activeScanToastRef = useRef<string | null>(null);
+  
+  // Cleanup management refs
+  const mountedRef = useRef<boolean>(true);
+  const activeTimeoutsRef = useRef<Set<NodeJS.Timeout>>(new Set());
+  const activeControllersRef = useRef<Set<AbortController>>(new Set());
+  
   const router = useRouter();
   const params = useParams();
   const classId = params.classId as string;
@@ -76,15 +82,26 @@ export default function AttendancePage() {
   const checkBackendConnection = async () => {
     try {
       const controller = new AbortController();
+      activeControllersRef.current.add(controller);
+      
       const timeoutId = setTimeout(() => controller.abort(), 5000);
+      activeTimeoutsRef.current.add(timeoutId);
+      
       const response = await fetch(`${BACKEND_URL}/health`, {
         method: "GET",
         signal: controller.signal,
       });
+      
       clearTimeout(timeoutId);
+      activeTimeoutsRef.current.delete(timeoutId);
+      activeControllersRef.current.delete(controller);
+      
       return response.ok;
     } catch (error) {
-      console.error('Backend connection check failed:', error);
+      // Suppress AbortError - it's expected on cleanup
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Backend connection check failed:', error);
+      }
       return false;
     }
   };
@@ -105,7 +122,10 @@ export default function AttendancePage() {
       }
 
       const controller = new AbortController();
+      activeControllersRef.current.add(controller);
+      
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      activeTimeoutsRef.current.add(timeoutId);
 
       const response = await fetch(`${BACKEND_URL}/train`, {
         method: 'POST',
@@ -117,6 +137,8 @@ export default function AttendancePage() {
       });
 
       clearTimeout(timeoutId);
+      activeTimeoutsRef.current.delete(timeoutId);
+      activeControllersRef.current.delete(controller);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -160,7 +182,10 @@ export default function AttendancePage() {
       console.log(`Captured image from webcam: ${imageSrc.substring(0, 50)}...`);
 
       const controller = new AbortController();
+      activeControllersRef.current.add(controller);
+      
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      activeTimeoutsRef.current.add(timeoutId);
 
       // Send to backend for recognition
       const response = await fetch(`${BACKEND_URL}/recognize`, {
@@ -176,6 +201,8 @@ export default function AttendancePage() {
       });
 
       clearTimeout(timeoutId);
+      activeTimeoutsRef.current.delete(timeoutId);
+      activeControllersRef.current.delete(controller);
       console.log('Recognition response status:', response.status);
 
       if (!response.ok) {
@@ -223,7 +250,10 @@ export default function AttendancePage() {
   const markStudentAttendance = async (studentId: string) => {
     try {
       const controller = new AbortController();
+      activeControllersRef.current.add(controller);
+      
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      activeTimeoutsRef.current.add(timeoutId);
 
       const response = await fetch(`${BACKEND_URL}/mark_attendance`, {
         method: 'POST',
@@ -238,6 +268,8 @@ export default function AttendancePage() {
       });
 
       clearTimeout(timeoutId);
+      activeTimeoutsRef.current.delete(timeoutId);
+      activeControllersRef.current.delete(controller);
 
       if (!response.ok) {
         throw new Error(`Failed to mark attendance: ${response.statusText}`);
@@ -378,14 +410,32 @@ export default function AttendancePage() {
     toast.success(`Scan stopped! ${recognizedStudentsRef.current.size} students marked present.`, { duration: 4000 });
   };
 
-  // Cleanup on unmount - dismiss all toasts and clear intervals
+  // Cleanup on unmount - dismiss all toasts, clear intervals, timeouts, and abort controllers
   useEffect(() => {
+    mountedRef.current = true;
+    
     return () => {
-      console.log('Component unmounting - cleaning up toasts and intervals');
+      console.log('Component unmounting - cleaning up all resources');
+      mountedRef.current = false;
+      
+      // Clear scan interval
       if (scanIntervalRef.current) {
         clearInterval(scanIntervalRef.current);
         scanIntervalRef.current = null;
       }
+      
+      // Clear all active timeouts
+      activeTimeoutsRef.current.forEach(timeoutId => {
+        clearTimeout(timeoutId);
+      });
+      activeTimeoutsRef.current.clear();
+      
+      // Abort all pending requests
+      activeControllersRef.current.forEach(controller => {
+        controller.abort();
+      });
+      activeControllersRef.current.clear();
+      
       // Dismiss all toasts when leaving the page
       toast.dismiss();
     };

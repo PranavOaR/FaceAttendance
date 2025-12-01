@@ -205,14 +205,15 @@ Step 6: ATTENDANCE MARKING
 
 #### 1️⃣ Clone & Setup Frontend
 ```bash
-cd face-recognition-attendance
+cd face-recognition-attendance/frontend
 npm install --legacy-peer-deps
 ```
 
 #### 2️⃣ Setup Python Backend
 ```bash
+cd ../  # Go back to root
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate  # On Windows: .venv\\Scripts\\activate
 
 pip install -r backend/requirements.txt
 ```
@@ -225,7 +226,8 @@ cp serviceAccountKey.json backend/
 
 #### 4️⃣ Set Environment Variables
 ```bash
-# Create .env.local in root
+# Create .env.local in frontend/
+# frontend/.env.local
 NEXT_PUBLIC_FIREBASE_API_KEY=your_key
 NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_domain
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project
@@ -240,8 +242,9 @@ cd backend
 python -m uvicorn main:app --reload --port 8000
 
 # Terminal 2: Frontend App
+cd frontend
 npm run dev
-# Open http://localhost:3002
+# Open http://localhost:3001
 ```
 
 ---
