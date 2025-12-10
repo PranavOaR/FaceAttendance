@@ -34,20 +34,20 @@
 - ✅ **Real-Time Face Recognition** - Instant student identification
 - ✅ **Automated Attendance** - One-click marking for entire classes
 - ✅ **Multi-Class Management** - Handle multiple classes seamlessly
-- ✅ **Student Analytics** - Comprehensive attendance reports & trends
+- ✅ **Student Analytics** - Charts & risk alerts for attendance trends
+- ✅ **Email Notifications** - Automatic parent alerts via Resend
 - ✅ **Secure Authentication** - Firebase-powered user authentication
-- ✅ **Mobile-Responsive** - Works on desktop, tablet, and mobile
 
 </td>
 <td width="50%">
 
 ### 🚀 Advanced Capabilities
 - 🔐 **Face Verification** - 99.2% accuracy with deep learning
-- 📊 **Real-Time Dashboard** - Live attendance statistics
-- 📥 **Bulk Export** - Download attendance as CSV reports
+- 📊 **Real-Time Dashboard** - Attendance trends chart & risk alerts
+- 📧 **Parent Notifications** - Email alerts when students are absent
+- 📥 **Bulk Export** - Download attendance as CSV/Excel reports
 - 🌐 **Cloud-Based** - Scalable Firebase infrastructure
-- ⚡ **High Performance** - Sub-100ms face recognition
-- 🎨 **Modern UI** - Beautiful glassmorphism design
+- 🎨 **Modern UI** - Clean, professional design
 
 </td>
 </tr>
@@ -139,6 +139,12 @@
 │  • Firestore - Real-time NoSQL database        │
 │  • Cloud Storage - File management             │
 │  • JSON Web Tokens - Secure authentication     │
+└────────────────────────────────────────────────┘
+
+┌─ Email Notifications ──────────────────────────┐
+│  • Resend API - Transactional email service    │
+│  • Automatic parent alerts for absent students │
+│  • Professional HTML email templates           │
 └────────────────────────────────────────────────┘
 ```
 
@@ -289,21 +295,23 @@ Reports → Select date range → Download CSV/View dashboard
 
 ### Color Palette
 ```
-Primary:    #3B82F6 (Blue)     - Interactive elements
-Success:    #10B981 (Green)    - Present/Active state
-Warning:    #F59E0B (Amber)    - Pending actions
-Danger:     #EF4444 (Red)      - Absent/Errors
-Background: #F3F4F6 (Light)    - Clean interface
-Text:       #111827 (Dark)     - High contrast
-Accent:     #8B5CF6 (Purple)   - Highlights
+Primary:    #0F172A (Slate 900) - Buttons, headings
+Secondary:  #64748B (Slate 500) - Subtext, icons  
+Success:    #10B981 (Green)     - Present/Active state
+Warning:    #F59E0B (Amber)     - At-risk students
+Danger:     #EF4444 (Red)       - Absent/Errors
+Background: #F8FAFC (Slate 50)  - Clean interface
+Borders:    #E2E8F0 (Slate 200) - Card borders
+Text:       #0F172A (Slate 900) - High contrast
 ```
 
 ### UI Components
-- 🔘 Modern glassmorphism cards
+- 🎨 Clean, modern card-based layouts
+- 📊 Recharts data visualizations
 - 📱 Fully responsive grid layouts
 - ⚡ Smooth Framer Motion animations
-- �� Accessible Radix UI primitives
-- 🎨 Tailwind CSS utility classes
+- 🔘 Accessible Radix UI primitives
+- 🎯 Tailwind CSS utility classes
 
 ### Typography
 - **Headings:** Bold, clear hierarchy
@@ -353,6 +361,7 @@ face-recognition-attendance/
 │   ├── 📁 utils/                   # Utility modules
 │   │   ├── 📄 recognition.py       # Face recognition logic
 │   │   ├── 📄 embeddings.py        # Embedding generation
+│   │   ├── 📄 email_service.py     # Resend email notifications
 │   │   └── 📄 firebase_utils.py    # Firebase integration
 │   ├── 📄 requirements.txt          # Python dependencies
 │   └── 📄 Dockerfile               # Container configuration
@@ -361,6 +370,8 @@ face-recognition-attendance/
 │   ├── 📄 FloatingHeader.tsx        # Navigation header
 │   ├── 📄 StudentCard.tsx           # Student component
 │   ├── 📄 ClassCard.tsx             # Class component
+│   ├── 📄 AttendanceTrendsChart.tsx # Line chart component
+│   ├── 📄 StudentRiskAlerts.tsx     # At-risk students alert
 │   └── 📁 ui/                       # UI primitives
 │
 ├── 📁 hooks/                        # React hooks
@@ -437,23 +448,27 @@ Database Query             < 100ms     ✓ 78ms
 
 ## 🎯 Roadmap
 
-### Phase 1 ✅ (Current)
+### Phase 1 ✅ (Completed)
 - [x] Core face recognition
 - [x] Attendance marking
 - [x] Basic reporting
 - [x] Firebase integration
+- [x] Attendance trends chart
+- [x] Student risk alerts (below 75%)
+- [x] Email notifications to parents
+- [x] Modern, professional UI redesign
 
 ### Phase 2 📅 (Planned)
+- [ ] Bulk CSV import for students
+- [ ] Student profile page
+- [ ] Attendance calendar view
+- [ ] PDF report export
 - [ ] Multi-language support
-- [ ] Mobile app (React Native)
-- [ ] Advanced analytics & ML
-- [ ] Blockchain attendance records
-- [ ] Biometric integration
 
 ### Phase 3 🚀 (Future)
-- [ ] Iris recognition support
+- [ ] Mobile app (React Native)
+- [ ] Advanced analytics & ML predictions
 - [ ] Real-time liveness detection
-- [ ] Predictive attendance insights
 - [ ] Integration with school ERP systems
 
 ---
@@ -508,6 +523,6 @@ If IDGuard helped you, please consider:
 [![Forks](https://img.shields.io/github/forks/PranavOaR/FaceAttendance?style=social)](https://github.com/PranavOaR/FaceAttendance)
 [![Issues](https://img.shields.io/github/issues/PranavOaR/FaceAttendance?style=social)](https://github.com/PranavOaR/FaceAttendance/issues)
 
-Last updated: November 30, 2024 | Version 1.0.0
+Last updated: December 10, 2024 | Version 1.1.0
 
 </div>
