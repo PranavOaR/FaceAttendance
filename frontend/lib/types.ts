@@ -26,6 +26,7 @@ export interface Student {
   srn: string;
   photo: string; // base64 or URL
   classId: string;
+  parentEmail?: string; // Optional parent email for notifications
 }
 
 export interface Attendance {

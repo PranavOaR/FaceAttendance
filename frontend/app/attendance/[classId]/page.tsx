@@ -27,12 +27,12 @@ export default function AttendancePage() {
   const scanIntervalRef = useRef<any>(null);
   const recognizedStudentsRef = useRef<Set<string>>(new Set());
   const activeScanToastRef = useRef<string | null>(null);
-  
+
   // Cleanup management refs
   const mountedRef = useRef<boolean>(true);
   const activeTimeoutsRef = useRef<Set<NodeJS.Timeout>>(new Set());
   const activeControllersRef = useRef<Set<AbortController>>(new Set());
-  
+
   const router = useRouter();
   const params = useParams();
   const classId = params.classId as string;
@@ -77,25 +77,25 @@ export default function AttendancePage() {
 
   // Backend API configuration
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-  
+
   // Check backend connectivity
   const checkBackendConnection = async () => {
     try {
       const controller = new AbortController();
       activeControllersRef.current.add(controller);
-      
+
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       activeTimeoutsRef.current.add(timeoutId);
-      
+
       const response = await fetch(`${BACKEND_URL}/health`, {
         method: "GET",
         signal: controller.signal,
       });
-      
+
       clearTimeout(timeoutId);
       activeTimeoutsRef.current.delete(timeoutId);
       activeControllersRef.current.delete(controller);
-      
+
       return response.ok;
     } catch (error) {
       // Suppress AbortError - it's expected on cleanup
@@ -109,9 +109,9 @@ export default function AttendancePage() {
   // Train the face recognition model for this class
   const trainFaceRecognition = async () => {
     if (!classData) return;
-    
+
     toast.loading('Training face recognition model...', { id: 'train' });
-    
+
     try {
       // First check if backend is reachable
       const isConnected = await checkBackendConnection();
@@ -123,8 +123,8 @@ export default function AttendancePage() {
 
       const controller = new AbortController();
       activeControllersRef.current.add(controller);
-      
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      const timeoutId = setTimeout(() => controller.abort('Training timeout'), 45000); // 45 second timeout for CNN model
       activeTimeoutsRef.current.add(timeoutId);
 
       const response = await fetch(`${BACKEND_URL}/train`, {
@@ -150,7 +150,7 @@ export default function AttendancePage() {
       return true;
     } catch (error: any) {
       console.error('Training error:', error);
-      
+
       if (error.name === 'AbortError') {
         toast.error('Training request timed out. The backend may be slow or overloaded.', { id: 'train' });
       } else if (error.message.includes('Failed to fetch') || error.message.includes('not running')) {
@@ -183,8 +183,8 @@ export default function AttendancePage() {
 
       const controller = new AbortController();
       activeControllersRef.current.add(controller);
-      
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+      const timeoutId = setTimeout(() => controller.abort('Recognition timeout'), 8000); // 8 second timeout
       activeTimeoutsRef.current.add(timeoutId);
 
       // Send to backend for recognition
@@ -251,7 +251,7 @@ export default function AttendancePage() {
     try {
       const controller = new AbortController();
       activeControllersRef.current.add(controller);
-      
+
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
       activeTimeoutsRef.current.add(timeoutId);
 
@@ -292,15 +292,15 @@ export default function AttendancePage() {
   // Real-time face recognition scanning with manual control
   const startFaceRecognition = async () => {
     if (!classData) return;
-    
+
     setIsScanning(true);
     setScanComplete(false);
     recognizedStudentsRef.current = new Set();
     setRecognizedCount(0);
-    
+
     // Clear any existing scan toasts
     toast.dismiss('scan');
-    
+
     // Show loading toast only once
     const toastId = toast.loading('Starting face recognition scan...', { id: 'scan' });
     activeScanToastRef.current = toastId as string;
@@ -314,7 +314,7 @@ export default function AttendancePage() {
 
       // Update toast to scanning status
       toast.loading('Scanning for faces... Look at the camera! Click "Stop Scan" when done.', { id: 'scan' });
-      
+
       // Scan for faces every 2 seconds continuously until manually stopped
       const scanInterval = 2000; // 2 seconds
 
@@ -324,13 +324,13 @@ export default function AttendancePage() {
 
           const result = await recognizeFace();
           console.log(`Scan result:`, result);
-          
+
           if (result?.matched && result.studentId) {
             if (!recognizedStudentsRef.current.has(result.studentId)) {
               console.log(`New face detected: ${result.studentName}, marking as present`);
               recognizedStudentsRef.current.add(result.studentId);
               setRecognizedCount(recognizedStudentsRef.current.size);
-              
+
               // Mark student as present in local state - ONLY update the specific student
               setAttendanceRecords(prev => {
                 const updated = [...prev];
@@ -347,7 +347,7 @@ export default function AttendancePage() {
               if (markResult) {
                 console.log(`Backend marked attendance for ${result.studentName}`);
               }
-              
+
               toast.success(`${result.studentName} marked present! (Confidence: ${(result.confidence * 100).toFixed(0)}%)`, {
                 duration: 3000
               });
@@ -376,10 +376,10 @@ export default function AttendancePage() {
         clearInterval(scanIntervalRef.current);
         scanIntervalRef.current = null;
       }
-      
+
       // Clear the loading toast
       toast.dismiss('scan');
-      
+
       if (error.message.includes('not running')) {
         toast.error(
           'Backend server is not running. Start it with: python -m uvicorn main:app --reload --port 8000',
@@ -399,13 +399,13 @@ export default function AttendancePage() {
     }
     setIsScanning(false);
     setScanComplete(true);
-    
+
     // Dismiss ALL scan-related toasts
     toast.dismiss('scan');
     if (activeScanToastRef.current) {
       toast.dismiss(activeScanToastRef.current);
     }
-    
+
     // Show success message
     toast.success(`Scan stopped! ${recognizedStudentsRef.current.size} students marked present.`, { duration: 4000 });
   };
@@ -413,29 +413,29 @@ export default function AttendancePage() {
   // Cleanup on unmount - dismiss all toasts, clear intervals, timeouts, and abort controllers
   useEffect(() => {
     mountedRef.current = true;
-    
+
     return () => {
       console.log('Component unmounting - cleaning up all resources');
       mountedRef.current = false;
-      
+
       // Clear scan interval
       if (scanIntervalRef.current) {
         clearInterval(scanIntervalRef.current);
         scanIntervalRef.current = null;
       }
-      
+
       // Clear all active timeouts
       activeTimeoutsRef.current.forEach(timeoutId => {
         clearTimeout(timeoutId);
       });
       activeTimeoutsRef.current.clear();
-      
-      // Abort all pending requests
+
+      // Abort all pending requests with a reason
       activeControllersRef.current.forEach(controller => {
-        controller.abort();
+        controller.abort('Component unmounted');
       });
       activeControllersRef.current.clear();
-      
+
       // Dismiss all toasts when leaving the page
       toast.dismiss();
     };
@@ -453,19 +453,19 @@ export default function AttendancePage() {
     setAttendanceRecords(prev => {
       const updated = [...prev];
       const studentIndex = updated.findIndex(r => r.studentId === studentId);
-      
+
       if (studentIndex >= 0) {
         const currentStatus = updated[studentIndex].status;
         const newStatus = currentStatus === 'present' ? 'absent' : 'present';
-        
+
         console.log(`Toggling student ${studentId} from ${currentStatus} to ${newStatus}`);
-        
+
         updated[studentIndex] = {
           ...updated[studentIndex],
           status: newStatus
         };
       }
-      
+
       return updated;
     });
   };
@@ -488,15 +488,49 @@ export default function AttendancePage() {
 
       // Save to Firebase using just the date (YYYY-MM-DD format)
       const todayDate = new Date().toISOString().split('T')[0];
-      
+
       await markAttendance({
         date: todayDate,
         presentStudents,
         absentStudents
       });
 
-      toast.success('Attendance saved successfully!');
-      
+      // Send email notifications to parents of absent students
+      try {
+        const absentStudentDetails = attendanceRecords
+          .filter(record => record.status === 'absent')
+          .map(record => {
+            const student = students.find(s => s.id === record.studentId);
+            return {
+              id: record.studentId,
+              name: record.studentName,
+              parentEmail: student?.parentEmail || null
+            };
+          })
+          .filter(s => s.parentEmail);
+
+        if (absentStudentDetails.length > 0) {
+          await fetch(`${BACKEND_URL}/notify/absence`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              classId: classData.id,
+              className: classData.name,
+              subject: classData.subject,
+              date: todayDate,
+              absentStudents: absentStudentDetails,
+              teacherName: user?.displayName || user?.email?.split('@')[0] || 'Your Teacher'
+            })
+          });
+          toast.success(`Attendance saved! ${absentStudentDetails.length} parent(s) notified.`);
+        } else {
+          toast.success('Attendance saved successfully!');
+        }
+      } catch (emailError) {
+        console.error('Email notification error:', emailError);
+        toast.success('Attendance saved! (Email notifications failed)');
+      }
+
       // Redirect back to class page after a short delay
       setTimeout(() => {
         router.push(`/class/${classData.id}`);
@@ -562,7 +596,7 @@ export default function AttendancePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Toaster position="top-right" />
-      
+
       {/* Navigation */}
       <FloatingHeader showLogout={true} onLogout={logout} />
 
@@ -594,7 +628,7 @@ export default function AttendancePage() {
                 </p>
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-3">
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -607,7 +641,7 @@ export default function AttendancePage() {
                 </svg>
                 Download Report
               </motion.button>
-              
+
               {scanComplete && (
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -691,7 +725,7 @@ export default function AttendancePage() {
           >
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Face Recognition Scanner</h3>
-              
+
               {/* Webcam Component */}
               <div className="aspect-video bg-gray-900 rounded-lg mb-4 flex items-center justify-center relative overflow-hidden">
                 <Webcam
@@ -707,7 +741,7 @@ export default function AttendancePage() {
                   }}
                   className="w-full h-full object-cover rounded-lg"
                 />
-                
+
                 {/* Face detection overlay - subtle green border instead of blue */}
                 {isScanning && (
                   <div className="absolute inset-4 border-2 border-green-500 rounded-lg animate-pulse">
@@ -846,7 +880,7 @@ export default function AttendancePage() {
           >
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Student Attendance</h3>
-              
+
               {attendanceRecords.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-gray-500">No students enrolled in this class.</p>
@@ -870,8 +904,8 @@ export default function AttendancePage() {
                           photo: record.photo,
                           classId: classId
                         }}
-                        onEdit={() => {}}
-                        onDelete={() => {}}
+                        onEdit={() => { }}
+                        onDelete={() => { }}
                         attendanceStatus={record.status}
                       />
                     </motion.div>

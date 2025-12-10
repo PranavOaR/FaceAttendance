@@ -29,7 +29,7 @@ class EmbeddingService:
         # Use CNN model for better accuracy (slower but more accurate than HOG)
         self.face_detection_model = "cnn"  # Can be "hog" or "cnn"
         # Number of times to upsample the image for better face detection
-        self.num_jitters = 10  # Increased from default 1 for better accuracy
+        self.num_jitters = 3  # Reduced for faster training (was 10)
         self._load_cache()
     
     def _load_cache(self):

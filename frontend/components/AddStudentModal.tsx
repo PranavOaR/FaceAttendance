@@ -17,22 +17,23 @@ interface AddStudentModalProps {
   classId: string;
 }
 
-export default function AddStudentModal({ 
-  isOpen, 
-  onClose, 
-  onSubmit, 
+export default function AddStudentModal({
+  isOpen,
+  onClose,
+  onSubmit,
   initialData,
   isEditing = false,
   classId
 }: AddStudentModalProps) {
-  const [formData, setFormData] = useState<AddStudentForm>({
+  const [formData, setFormData] = useState<AddStudentForm & { parentEmail: string }>({
     name: initialData?.name || '',
     srn: initialData?.srn || '',
-    photo: null
+    photo: null,
+    parentEmail: initialData?.parentEmail || ''
   });
   const [photoPreview, setPhotoPreview] = useState<string>(initialData?.photo || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const { user } = useAuth();
   const { uploadPhoto, uploading, progress, error: uploadError } = usePhotoUpload();
 
@@ -73,7 +74,7 @@ export default function AddStudentModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim() || !formData.srn.trim()) {
       toast.error('Please fill in all required fields');
       return;
@@ -92,7 +93,7 @@ export default function AddStudentModal({
     setIsSubmitting(true);
     try {
       let photoURL = initialData?.photo || '';
-      
+
       // Upload photo to Firebase Storage if a new photo is provided
       if (formData.photo) {
         photoURL = await uploadPhoto(
@@ -108,11 +109,12 @@ export default function AddStudentModal({
         name: formData.name.trim(),
         srn: formData.srn.trim().toUpperCase(),
         photo: photoURL,
-        classId: classId
+        classId: classId,
+        parentEmail: formData.parentEmail.trim() || undefined
       };
 
       await onSubmit(studentData);
-      setFormData({ name: '', srn: '', photo: null });
+      setFormData({ name: '', srn: '', photo: null, parentEmail: '' });
       setPhotoPreview('');
       onClose();
     } catch (error: any) {
@@ -123,7 +125,7 @@ export default function AddStudentModal({
   };
 
   const handleClose = () => {
-    setFormData(initialData ? { name: initialData.name, srn: initialData.srn, photo: null } : { name: '', srn: '', photo: null });
+    setFormData(initialData ? { name: initialData.name, srn: initialData.srn, photo: null, parentEmail: initialData.parentEmail || '' } : { name: '', srn: '', photo: null, parentEmail: '' });
     setPhotoPreview(initialData?.photo || '');
     onClose();
   };
@@ -145,7 +147,7 @@ export default function AddStudentModal({
             onClick={handleClose}
             className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4"
           />
-          
+
           {/* Modal */}
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -205,12 +207,28 @@ export default function AddStudentModal({
                   />
                 </div>
 
+                {/* Parent Email */}
+                <div>
+                  <label htmlFor="parentEmail" className="block text-sm font-medium text-gray-700 mb-2">
+                    Parent Email <span className="text-gray-400 font-normal">(for notifications)</span>
+                  </label>
+                  <input
+                    type="email"
+                    id="parentEmail"
+                    value={formData.parentEmail}
+                    onChange={(e) => setFormData({ ...formData, parentEmail: e.target.value })}
+                    placeholder="e.g., parent@email.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    disabled={isSubmitting}
+                  />
+                </div>
+
                 {/* Photo Upload */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Student Photo {!isEditing && '*'}
                   </label>
-                  
+
                   {photoPreview ? (
                     <div className="flex items-center space-x-4">
                       <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100">

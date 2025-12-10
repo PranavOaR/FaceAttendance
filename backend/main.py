@@ -33,6 +33,15 @@ except Exception as e:
     print(f"Warning: Could not import RecognitionService: {e}", file=sys.stderr)
     RecognitionService = None
 
+try:
+    from utils.email_service import EmailService
+except Exception as e:
+    print(f"Warning: Could not import EmailService: {e}", file=sys.stderr)
+    EmailService = None
+
+# Resend API Key
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "re_hqx6vNGE_93PmLXHSr9gXweztVWQm2q2a")
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Face Recognition Attendance API",
@@ -480,6 +489,67 @@ async def update_jitters(jitters: int):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Email notification models
+class NotificationRequest(BaseModel):
+    classId: str
+    className: str
+    subject: str
+    date: str
+    absentStudents: List[dict]  # [{id, name, parentEmail}]
+    teacherName: str = "Your Teacher"
+
+class NotificationResponse(BaseModel):
+    success: bool
+    message: str
+    results: List[dict] = []
+
+# Initialize email service
+email_service = EmailService(RESEND_API_KEY) if EmailService else None
+
+@app.post("/notify/absence", response_model=NotificationResponse)
+async def send_absence_notifications(request: NotificationRequest):
+    """
+    Send absence notification emails to parents of absent students.
+    """
+    if not email_service:
+        raise HTTPException(status_code=500, detail="Email service not available")
+    
+    try:
+        notifications = []
+        for student in request.absentStudents:
+            if student.get("parentEmail"):
+                notifications.append({
+                    "parent_email": student["parentEmail"],
+                    "student_name": student["name"],
+                    "class_name": request.className,
+                    "subject_name": request.subject,
+                    "date": request.date
+                })
+        
+        if not notifications:
+            return NotificationResponse(
+                success=True,
+                message="No parent emails to notify",
+                results=[]
+            )
+        
+        results = email_service.send_bulk_absence_notifications(
+            notifications,
+            teacher_name=request.teacherName
+        )
+        
+        success_count = sum(1 for r in results if r.get("success"))
+        
+        return NotificationResponse(
+            success=True,
+            message=f"Sent {success_count}/{len(results)} notifications",
+            results=results
+        )
+        
+    except Exception as e:
+        print(f"Error sending notifications: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send notifications: {str(e)}")
 
 if __name__ == "__main__":
     # Run the server
