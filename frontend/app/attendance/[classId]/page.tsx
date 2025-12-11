@@ -124,7 +124,7 @@ export default function AttendancePage() {
       const controller = new AbortController();
       activeControllersRef.current.add(controller);
 
-      const timeoutId = setTimeout(() => controller.abort('Training timeout'), 45000); // 45 second timeout for CNN model
+      const timeoutId = setTimeout(() => controller.abort('Training timeout'), 90000); // 90 second timeout for CNN model
       activeTimeoutsRef.current.add(timeoutId);
 
       const response = await fetch(`${BACKEND_URL}/train`, {

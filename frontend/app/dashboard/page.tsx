@@ -9,11 +9,14 @@ import { useClasses } from '@/hooks/useFirestore';
 import { getDashboardSummary, DashboardSummary, getAttendanceTrends, getRiskStudents, TrendDataPoint, RiskStudent } from '@/lib/analytics';
 import AttendanceTrendsChart from '@/components/AttendanceTrendsChart';
 import StudentRiskAlerts from '@/components/StudentRiskAlerts';
+import StatsCardFlip from '@/components/StatsCardFlip';
 import toast, { Toaster } from 'react-hot-toast';
 import { FloatingHeader } from '@/components/ui/floating-header';
 import ClassCard from '@/components/ClassCard';
 import AddClassModal from '@/components/AddClassModal';
 import { LoadingState, LoadingSkeleton, ErrorState, EmptyState } from '@/components/LoadingStates';
+import { BookOpen, Users, CheckCircle, Calendar } from 'lucide-react';
+
 
 export default function DashboardPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -217,77 +220,43 @@ export default function DashboardPage() {
           </div>
         </motion.div>
 
-        {/* Stats Cards */}
+        {/* Stats Cards with Flip Animation */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8"
         >
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">Total Classes</p>
-                <p className="text-2xl font-semibold text-slate-900 mt-1">
-                  {dashboardSummary?.totalClasses ?? classes.length}
-                </p>
-              </div>
-              <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-              </div>
-            </div>
-          </div>
+          <StatsCardFlip
+            title="Total Classes"
+            value={dashboardSummary?.totalClasses ?? classes.length}
+            icon={BookOpen}
+            color="blue"
+          />
 
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">Total Students</p>
-                <p className="text-2xl font-semibold text-slate-900 mt-1">
-                  {dashboardSummary?.totalStudents ?? classes.reduce((total, cls) => total + cls.students.length, 0)}
-                </p>
-              </div>
-              <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
+          <StatsCardFlip
+            title="Total Students"
+            value={dashboardSummary?.totalStudents ?? classes.reduce((total, cls) => total + cls.students.length, 0)}
+            icon={Users}
+            color="green"
+          />
 
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">Avg. Attendance</p>
-                <p className="text-2xl font-semibold text-slate-900 mt-1">
-                  {loadingAnalytics ? '...' : `${dashboardSummary?.averageAttendance ?? 0}%`}
-                </p>
-              </div>
-              <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
+          <StatsCardFlip
+            title="Avg. Attendance"
+            value={loadingAnalytics ? '...' : `${dashboardSummary?.averageAttendance ?? 0}%`}
+            icon={CheckCircle}
+            color="purple"
+          />
 
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">Total Sessions</p>
-                <p className="text-2xl font-semibold text-slate-900 mt-1">
-                  {classes.reduce((total, cls) => total + cls.attendanceRecords.length, 0)}
-                </p>
-              </div>
-              <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-            </div>
-          </div>
+          <StatsCardFlip
+            title="Total Sessions"
+            value={classes.reduce((total, cls) => total + cls.attendanceRecords.length, 0)}
+            icon={Calendar}
+            color="orange"
+          />
         </motion.div>
+
+
 
         {/* Analytics Charts */}
         <motion.div
