@@ -43,13 +43,19 @@ const convertTimestamp = (timestamp: any): string => {
 export const createOrUpdateTeacher = async (uid: string, teacherData: Partial<Teacher>): Promise<void> => {
   try {
     const teacherRef = doc(db, COLLECTIONS.TEACHERS, uid);
+
+    // Filter out undefined values as Firestore doesn't accept them
+    const cleanData = Object.fromEntries(
+      Object.entries(teacherData).filter(([_, value]) => value !== undefined)
+    );
+
     await updateDoc(teacherRef, {
-      ...teacherData,
+      ...cleanData,
       updatedAt: serverTimestamp()
     }).catch(async () => {
       // If document doesn't exist, create it
       await addDoc(collection(db, COLLECTIONS.TEACHERS), {
-        ...teacherData,
+        ...cleanData,
         uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -68,7 +74,7 @@ export const getTeacher = async (uid: string): Promise<Teacher | null> => {
   try {
     const teacherRef = doc(db, COLLECTIONS.TEACHERS, uid);
     const teacherSnap = await getDoc(teacherRef);
-    
+
     if (teacherSnap.exists()) {
       const data = teacherSnap.data();
       return {
@@ -113,19 +119,19 @@ export const getTeacherClasses = async (teacherId: string): Promise<Class[]> => 
       where('teacherEmail', '==', teacherId),
       orderBy('createdAt', 'desc')
     );
-    
+
     const querySnapshot = await getDocs(q);
     const classes: Class[] = [];
-    
+
     for (const docSnap of querySnapshot.docs) {
       const data = docSnap.data();
-      
+
       // Get students for this class
       const students = await getClassStudents(docSnap.id);
-      
+
       // Get attendance records for this class  
       const attendanceRecords = await getClassAttendance(docSnap.id);
-      
+
       classes.push({
         id: docSnap.id,
         ...data,
@@ -134,7 +140,7 @@ export const getTeacherClasses = async (teacherId: string): Promise<Class[]> => 
         createdAt: convertTimestamp(data.createdAt)
       } as Class);
     }
-    
+
     return classes;
   } catch (error) {
     console.error('Error getting teacher classes:', error);
@@ -149,14 +155,14 @@ export const getClass = async (classId: string): Promise<Class | null> => {
   try {
     const classRef = doc(db, COLLECTIONS.CLASSES, classId);
     const classSnap = await getDoc(classRef);
-    
+
     if (classSnap.exists()) {
       const data = classSnap.data();
-      
+
       // Get students and attendance records
       const students = await getClassStudents(classId);
       const attendanceRecords = await getClassAttendance(classId);
-      
+
       return {
         id: classSnap.id,
         ...data,
@@ -194,7 +200,7 @@ export const updateClass = async (classId: string, updates: Partial<Class>): Pro
 export const deleteClass = async (classId: string): Promise<void> => {
   try {
     const batch = writeBatch(db);
-    
+
     // Delete all students in the class
     const studentsQuery = query(
       collection(db, COLLECTIONS.CLASSES, classId, COLLECTIONS.STUDENTS)
@@ -203,7 +209,7 @@ export const deleteClass = async (classId: string): Promise<void> => {
     studentsSnapshot.forEach((doc) => {
       batch.delete(doc.ref);
     });
-    
+
     // Delete all attendance records
     const attendanceQuery = query(
       collection(db, COLLECTIONS.CLASSES, classId, COLLECTIONS.ATTENDANCE)
@@ -212,11 +218,11 @@ export const deleteClass = async (classId: string): Promise<void> => {
     attendanceSnapshot.forEach((doc) => {
       batch.delete(doc.ref);
     });
-    
+
     // Delete the class document
     const classRef = doc(db, COLLECTIONS.CLASSES, classId);
     batch.delete(classRef);
-    
+
     await batch.commit();
   } catch (error) {
     console.error('Error deleting class:', error);
@@ -234,17 +240,17 @@ export const addStudent = async (classId: string, student: Omit<Student, 'id'>):
     const batch = writeBatch(db);
     const classRef = doc(db, COLLECTIONS.CLASSES, classId);
     const classDoc = await getDoc(classRef);
-    
+
     if (!classDoc.exists()) {
       throw new Error('Class not found');
     }
-    
+
     const classData = classDoc.data() as Class;
     const students = classData.students || [];
-    
+
     // Generate a new ID for the student
     const studentId = doc(collection(db, 'temp')).id;
-    
+
     // Create the new student with the generated ID
     const newStudent: Student = {
       id: studentId,
@@ -253,13 +259,13 @@ export const addStudent = async (classId: string, student: Omit<Student, 'id'>):
       photo: student.photo,
       classId: student.classId,
     };
-    
+
     // Add the student to the class's students array
     students.push(newStudent);
-    
+
     // Update the class document with the new students array
     batch.update(classRef, { students });
-    
+
     await batch.commit();
     return studentId;
   } catch (error) {
@@ -276,17 +282,17 @@ export const getClassStudents = async (classId: string): Promise<Student[]> => {
     console.log(`Fetching students for class ${classId}`);
     const classRef = doc(db, COLLECTIONS.CLASSES, classId);
     const classDoc = await getDoc(classRef);
-    
+
     if (!classDoc.exists()) {
       throw new Error('Class not found');
     }
-    
+
     const classData = classDoc.data() as Class;
     console.log('Class data for students fetch:', JSON.stringify(classData, null, 2));
-    
+
     let students = classData.students || [];
     console.log(`Found ${students.length} students in class array`);
-    
+
     // If no students in array, check subcollection (backward compatibility)
     if (students.length === 0) {
       console.log('No students in array, checking subcollection...');
@@ -295,10 +301,10 @@ export const getClassStudents = async (classId: string): Promise<Student[]> => {
           collection(db, COLLECTIONS.CLASSES, classId, COLLECTIONS.STUDENTS),
           orderBy('name', 'asc')
         );
-        
+
         const querySnapshot = await getDocs(q);
         console.log(`Found ${querySnapshot.size} students in subcollection`);
-        
+
         if (querySnapshot.size > 0) {
           const subcollectionStudents: Student[] = [];
           querySnapshot.docs.forEach(doc => {
@@ -311,7 +317,7 @@ export const getClassStudents = async (classId: string): Promise<Student[]> => {
               classId: classId,
             });
           });
-          
+
           console.log('Students from subcollection:', subcollectionStudents.map(s => ({ id: s.id, name: s.name })));
           students = subcollectionStudents;
         }
@@ -319,9 +325,9 @@ export const getClassStudents = async (classId: string): Promise<Student[]> => {
         console.log('Error checking subcollection:', subError);
       }
     }
-    
+
     console.log('Final students:', students.map(s => ({ id: s.id, name: s.name })));
-    
+
     // Sort students by name
     return students.sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
@@ -338,26 +344,26 @@ export const updateStudent = async (classId: string, student: Student): Promise<
     const batch = writeBatch(db);
     const classRef = doc(db, COLLECTIONS.CLASSES, classId);
     const classDoc = await getDoc(classRef);
-    
+
     if (!classDoc.exists()) {
       throw new Error('Class not found');
     }
-    
+
     const classData = classDoc.data() as Class;
     const students = classData.students || [];
-    
+
     // Find the student index
     const studentIndex = students.findIndex(s => s.id === student.id);
     if (studentIndex === -1) {
       throw new Error('Student not found');
     }
-    
+
     // Update the student in the array
     students[studentIndex] = student;
-    
+
     // Update the class document with the modified students array
     batch.update(classRef, { students });
-    
+
     await batch.commit();
   } catch (error) {
     console.error('Error updating student:', error);
@@ -371,40 +377,40 @@ export const updateStudent = async (classId: string, student: Student): Promise<
 export const deleteStudent = async (classId: string, studentId: string): Promise<void> => {
   try {
     console.log(`Attempting to delete student ${studentId} from class ${classId}`);
-    
+
     const batch = writeBatch(db);
     const classRef = doc(db, COLLECTIONS.CLASSES, classId);
     const classDoc = await getDoc(classRef);
-    
+
     if (!classDoc.exists()) {
       throw new Error('Class not found');
     }
-    
+
     const classData = classDoc.data() as Class;
     console.log('Raw class data:', JSON.stringify(classData, null, 2));
-    
+
     const students = classData.students || [];
-    
+
     console.log(`Found class with ${students.length} students in array`);
     console.log('Students in class array:', students.map(s => ({ id: s.id, name: s.name })));
     console.log(`Looking for student with ID: ${studentId}`);
-    
+
     // Check if student exists in array format
     const studentIndex = students.findIndex(s => s.id === studentId);
-    
+
     if (studentIndex === -1) {
       // Student not found in array, check if it exists in subcollection (old format)
       console.log('Student not found in array, checking subcollection...');
-      
+
       try {
         const studentSubRef = doc(db, COLLECTIONS.CLASSES, classId, COLLECTIONS.STUDENTS, studentId);
         const studentSubDoc = await getDoc(studentSubRef);
-        
+
         if (studentSubDoc.exists()) {
           console.log('Found student in subcollection, deleting from subcollection...');
           // Delete from subcollection (old format)
           batch.delete(studentSubRef);
-          
+
           // Also clean up any attendance records
           const attendanceRecords = classData.attendanceRecords || [];
           const updatedAttendanceRecords = attendanceRecords.map(record => ({
@@ -412,11 +418,11 @@ export const deleteStudent = async (classId: string, studentId: string): Promise
             presentStudents: record.presentStudents?.filter(id => id !== studentId) || [],
             absentStudents: record.absentStudents?.filter(id => id !== studentId) || []
           }));
-          
+
           if (attendanceRecords.length > 0) {
             batch.update(classRef, { attendanceRecords: updatedAttendanceRecords });
           }
-          
+
           await batch.commit();
           console.log(`Successfully deleted student ${studentId} from subcollection in class ${classId}`);
           return;
@@ -424,15 +430,15 @@ export const deleteStudent = async (classId: string, studentId: string): Promise
       } catch (subError) {
         console.log('Error checking subcollection:', subError);
       }
-      
+
       console.error(`Student ${studentId} not found in class students array`);
       console.error('Available student IDs:', students.map(s => s.id));
       throw new Error('Student not found in class');
     }
-    
+
     // Remove the student from the array
     students.splice(studentIndex, 1);
-    
+
     // Update attendance records to remove this student
     const attendanceRecords = classData.attendanceRecords || [];
     const updatedAttendanceRecords = attendanceRecords.map(record => ({
@@ -440,13 +446,13 @@ export const deleteStudent = async (classId: string, studentId: string): Promise
       presentStudents: record.presentStudents?.filter(id => id !== studentId) || [],
       absentStudents: record.absentStudents?.filter(id => id !== studentId) || []
     }));
-    
+
     // Update the class document
-    batch.update(classRef, { 
+    batch.update(classRef, {
       students,
       attendanceRecords: updatedAttendanceRecords
     });
-    
+
     await batch.commit();
     console.log(`Successfully deleted student ${studentId} from array in class ${classId}`);
   } catch (error) {
@@ -464,18 +470,18 @@ export const addAttendanceRecord = async (classId: string, attendanceData: Omit<
   try {
     const classRef = doc(db, COLLECTIONS.CLASSES, classId);
     const classDoc = await getDoc(classRef);
-    
+
     if (!classDoc.exists()) {
       throw new Error('Class not found');
     }
-    
+
     const classData = classDoc.data() as Class;
     const attendanceRecords = classData.attendanceRecords || [];
-    
+
     // Check if a record for today already exists
     const today = attendanceData.date;
     const existingRecordIndex = attendanceRecords.findIndex(r => r.date === today);
-    
+
     if (existingRecordIndex !== -1) {
       // Update existing record for today
       console.log(`Updating existing attendance record for ${today}`);
@@ -494,12 +500,12 @@ export const addAttendanceRecord = async (classId: string, attendanceData: Omit<
       };
       attendanceRecords.push(newRecord);
     }
-    
+
     // Update class document
     await updateDoc(classRef, { attendanceRecords });
-    
+
     console.log(`Saved ${attendanceData.presentStudents?.length || 0} present and ${attendanceData.absentStudents?.length || 0} absent for ${today}`);
-    
+
     return `record_${today}`;
   } catch (error) {
     console.error('Error adding attendance record:', error);
@@ -514,16 +520,16 @@ export const getClassAttendance = async (classId: string): Promise<Attendance[]>
   try {
     const classRef = doc(db, COLLECTIONS.CLASSES, classId);
     const classDoc = await getDoc(classRef);
-    
+
     if (!classDoc.exists()) {
       return [];
     }
-    
+
     const classData = classDoc.data() as Class;
     const attendanceRecords = classData.attendanceRecords || [];
-    
+
     console.log(`Found ${attendanceRecords.length} attendance records for class ${classId}`);
-    
+
     // Convert to Attendance type and sort by date descending
     return attendanceRecords
       .map((record: any, index: number) => ({
@@ -556,17 +562,17 @@ export const listenToTeacherClasses = (teacherId: string, callback: (classes: Cl
     where('teacherEmail', '==', teacherId),
     orderBy('createdAt', 'desc')
   );
-  
+
   return onSnapshot(q, async (snapshot) => {
     const classes: Class[] = [];
-    
+
     for (const docChange of snapshot.docs) {
       const data = docChange.data();
-      
+
       // Get students and attendance for each class
       const students = await getClassStudents(docChange.id);
       const attendanceRecords = await getClassAttendance(docChange.id);
-      
+
       classes.push({
         id: docChange.id,
         ...data,
@@ -575,7 +581,7 @@ export const listenToTeacherClasses = (teacherId: string, callback: (classes: Cl
         createdAt: convertTimestamp(data.createdAt)
       } as Class);
     }
-    
+
     callback(classes);
   });
 };
@@ -585,18 +591,18 @@ export const listenToTeacherClasses = (teacherId: string, callback: (classes: Cl
  */
 export const listenToClassStudents = (classId: string, callback: (students: Student[]) => void) => {
   const classRef = doc(db, COLLECTIONS.CLASSES, classId);
-  
+
   return onSnapshot(classRef, async (classDoc) => {
     if (!classDoc.exists()) {
       callback([]);
       return;
     }
-    
+
     const classData = classDoc.data() as Class;
     let students = classData.students || [];
-    
+
     console.log(`Real-time listener: Found ${students.length} students in class array`);
-    
+
     // If no students in array, check subcollection for backward compatibility
     if (students.length === 0) {
       console.log('Real-time listener: No students in array, checking subcollection...');
@@ -605,10 +611,10 @@ export const listenToClassStudents = (classId: string, callback: (students: Stud
           collection(db, COLLECTIONS.CLASSES, classId, COLLECTIONS.STUDENTS),
           orderBy('name', 'asc')
         );
-        
+
         const querySnapshot = await getDocs(q);
         console.log(`Real-time listener: Found ${querySnapshot.size} students in subcollection`);
-        
+
         if (querySnapshot.size > 0) {
           const subcollectionStudents: Student[] = [];
           querySnapshot.docs.forEach(doc => {
@@ -627,11 +633,11 @@ export const listenToClassStudents = (classId: string, callback: (students: Stud
         console.log('Real-time listener: Error checking subcollection:', subError);
       }
     }
-    
+
     // Sort students by name
     const sortedStudents = students.sort((a, b) => a.name.localeCompare(b.name));
     console.log('Real-time listener: Final students:', sortedStudents.map(s => ({ id: s.id, name: s.name })));
-    
+
     callback(sortedStudents);
   });
 };
