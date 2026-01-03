@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![IDGuard Banner](https://img.shields.io/badge/Version-1.0.0-blue?style=for-the-badge&logo=github)
+![IDGuard Banner](https://img.shields.io/badge/Version-1.2.0-blue?style=for-the-badge&logo=github)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Active-success?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python)
