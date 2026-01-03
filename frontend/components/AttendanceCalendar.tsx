@@ -153,15 +153,12 @@ export default function AttendanceCalendar({ attendanceRecords, totalStudents }:
                             whileTap={{ scale: 0.95 }}
                             onClick={() => setSelectedDate(isSelected ? null : item.date)}
                             className={`
-                aspect-square rounded-lg flex flex-col items-center justify-center text-xs relative
+                aspect-square rounded-lg flex flex-col items-center justify-center text-xs
                 transition-all duration-200
                 ${isSelected ? 'ring-2 ring-slate-900 ring-offset-1' : ''}
                 ${isToday ? 'font-bold' : ''}
-                ${info ? 'cursor-pointer hover:shadow-md' : 'cursor-default'}
+                ${info ? 'cursor-pointer hover:shadow-md ' + getColorClass(info.percentage) : 'cursor-default bg-slate-50'}
               `}
-                            style={{
-                                backgroundColor: info ? undefined : '#f8fafc'
-                            }}
                         >
                             <span className={`
                 ${info ? 'text-white font-medium' : 'text-slate-400'}
@@ -169,11 +166,6 @@ export default function AttendanceCalendar({ attendanceRecords, totalStudents }:
               `}>
                                 {item.day}
                             </span>
-
-                            {/* Attendance indicator */}
-                            {info && (
-                                <div className={`absolute inset-0 rounded-lg ${getColorClass(info.percentage)} -z-10`} />
-                            )}
 
                             {/* Today indicator */}
                             {isToday && !info && (
