@@ -10,6 +10,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import { FloatingHeader } from '@/components/ui/floating-header';
 import StudentCard from '@/components/StudentCard';
 import AddStudentModal from '@/components/AddStudentModal';
+import AttendanceCalendar from '@/components/AttendanceCalendar';
 
 export default function ClassPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -233,6 +234,19 @@ export default function ClassPage() {
               </div>
             </div>
           </div>
+        </motion.div>
+
+        {/* Attendance Calendar */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+          className="mb-8"
+        >
+          <AttendanceCalendar
+            attendanceRecords={classData.attendanceRecords || []}
+            totalStudents={students.length}
+          />
         </motion.div>
 
         {/* Students Grid */}
