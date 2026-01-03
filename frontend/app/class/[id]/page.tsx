@@ -14,6 +14,7 @@ import AttendanceCalendar from '@/components/AttendanceCalendar';
 
 export default function ClassPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Force light mode
   useEffect(() => {
@@ -256,7 +257,33 @@ export default function ClassPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <h2 className="text-base font-semibold text-slate-900 mb-4">Students</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-slate-900">Students</h2>
+            {students.length > 0 && (
+              <div className="relative">
+                <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search by name or SRN..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent w-64"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           {students.length === 0 ? (
             <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
@@ -278,22 +305,50 @@ export default function ClassPage() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {students.map((student, index) => (
-                <motion.div
-                  key={student.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.03 * index }}
-                >
-                  <StudentCard
-                    student={student}
-                    onEdit={handleEditStudent}
-                    onDelete={handleDeleteStudent}
-                  />
-                </motion.div>
-              ))}
-            </div>
+            <>
+              {(() => {
+                const filteredStudents = students.filter(student =>
+                  student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  (student.srn && student.srn.toLowerCase().includes(searchQuery.toLowerCase()))
+                );
+
+                if (filteredStudents.length === 0 && searchQuery) {
+                  return (
+                    <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                      <svg className="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <p className="text-sm text-slate-500">No students found matching "{searchQuery}"</p>
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        className="mt-2 text-sm text-slate-900 hover:underline"
+                      >
+                        Clear search
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {filteredStudents.map((student, index) => (
+                      <motion.div
+                        key={student.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.03 * index }}
+                      >
+                        <StudentCard
+                          student={student}
+                          onEdit={handleEditStudent}
+                          onDelete={handleDeleteStudent}
+                        />
+                      </motion.div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </>
           )}
         </motion.div>
       </main>
