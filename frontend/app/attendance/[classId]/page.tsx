@@ -9,6 +9,7 @@ import { useClass, useStudents, useAttendance } from '@/hooks/useFirestore';
 import { downloadCSV } from '@/utils/storage';
 import toast, { Toaster } from 'react-hot-toast';
 import { FloatingHeader } from '@/components/ui/floating-header';
+import { TrainingLoader, ScanningLoader } from '@/components/ui/loader';
 import StudentCard from '@/components/StudentCard';
 import Webcam from 'react-webcam';
 
@@ -21,8 +22,11 @@ export default function AttendancePage() {
     document.body.classList.remove('dark');
   }, []);
   const [isScanning, setIsScanning] = useState(false);
+  const [isTraining, setIsTraining] = useState(false);
   const [scanComplete, setScanComplete] = useState(false);
   const [recognizedCount, setRecognizedCount] = useState(0);
+  const [livenessStatus, setLivenessStatus] = useState<'unknown' | 'live' | 'spoof'>('unknown');
+  const [livenessConfidence, setLivenessConfidence] = useState<number | null>(null);
   const webcamRef = useRef<any>(null);
   const scanIntervalRef = useRef<any>(null);
   const recognizedStudentsRef = useRef<Set<string>>(new Set());
@@ -110,6 +114,7 @@ export default function AttendancePage() {
   const trainFaceRecognition = async () => {
     if (!classData) return;
 
+    setIsTraining(true);
     toast.loading('Training face recognition model...', { id: 'train' });
 
     try {
@@ -146,6 +151,7 @@ export default function AttendancePage() {
       }
 
       const result = await response.json();
+      setIsTraining(false);
       toast.success(`Model trained successfully! Processed ${result.studentsProcessed} students.`, { id: 'train' });
       return true;
     } catch (error: any) {
@@ -161,6 +167,7 @@ export default function AttendancePage() {
       } else {
         toast.error(`Training failed: ${error.message}`, { id: 'train' });
       }
+      setIsTraining(false);
       return false;
     }
   };
@@ -325,6 +332,22 @@ export default function AttendancePage() {
           const result = await recognizeFace();
           console.log(`Scan result:`, result);
 
+          // Handle liveness detection result
+          if (result?.is_live !== undefined) {
+            setLivenessStatus(result.is_live ? 'live' : 'spoof');
+            setLivenessConfidence(result.liveness_confidence || null);
+
+            // If spoof detected, show warning and skip recognition
+            if (result.is_live === false) {
+              console.log('⚠️ Spoof detected - skipping recognition');
+              toast.error('🚫 Spoof Detected! Please show your real face, not a photo.', {
+                duration: 3000,
+                icon: '🛡️'
+              });
+              return; // Skip face recognition for this frame
+            }
+          }
+
           if (result?.matched && result.studentId) {
             if (!recognizedStudentsRef.current.has(result.studentId)) {
               console.log(`New face detected: ${result.studentName}, marking as present`);
@@ -348,7 +371,9 @@ export default function AttendancePage() {
                 console.log(`Backend marked attendance for ${result.studentName}`);
               }
 
-              toast.success(`${result.studentName} marked present! (Confidence: ${(result.confidence * 100).toFixed(0)}%)`, {
+              // Show success with liveness info
+              const livenessInfo = result.is_live ? ' ✓ Live' : '';
+              toast.success(`${result.studentName} marked present! (${(result.confidence * 100).toFixed(0)}%${livenessInfo})`, {
                 duration: 3000
               });
             } else {
@@ -356,6 +381,10 @@ export default function AttendancePage() {
             }
           } else if (result?.matched === false) {
             console.log('No face match found in this scan', result);
+            // Reset liveness status if no match
+            if (!result?.is_live) {
+              setLivenessStatus('unknown');
+            }
           }
 
         } catch (error: any) {
@@ -749,6 +778,42 @@ export default function AttendancePage() {
                     <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-500"></div>
                     <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-500"></div>
                     <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-500"></div>
+                  </div>
+                )}
+
+                {/* Training Loader Overlay */}
+                {isTraining && (
+                  <div className="absolute inset-0 bg-black/70 flex items-center justify-center rounded-lg z-10">
+                    <TrainingLoader text="Training model..." className="text-white" />
+                  </div>
+                )}
+
+                {/* Scanning Loader Overlay */}
+                {isScanning && !isTraining && (
+                  <div className="absolute top-2 right-2 z-10">
+                    <div className="bg-white/90 rounded-lg px-3 py-2 shadow-lg flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full animate-pulse ${livenessStatus === 'live' ? 'bg-green-500' :
+                          livenessStatus === 'spoof' ? 'bg-red-500' : 'bg-blue-500'
+                        }`}></div>
+                      <span className="text-xs font-medium text-gray-700">
+                        {livenessStatus === 'spoof' ? '🚫 Spoof!' : `Scanning... ${recognizedCount} found`}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Liveness Status Indicator */}
+                {isScanning && !isTraining && livenessStatus !== 'unknown' && (
+                  <div className={`absolute bottom-2 left-2 z-10 px-3 py-1.5 rounded-lg shadow-lg flex items-center gap-2 ${livenessStatus === 'live' ? 'bg-green-500/90' : 'bg-red-500/90'
+                    }`}>
+                    <span className="text-white text-xs font-semibold">
+                      {livenessStatus === 'live' ? '🛡️ LIVE' : '⚠️ SPOOF DETECTED'}
+                    </span>
+                    {livenessConfidence !== null && (
+                      <span className="text-white/80 text-xs">
+                        ({(livenessConfidence * 100).toFixed(0)}%)
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

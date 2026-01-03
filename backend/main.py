@@ -10,6 +10,11 @@ import numpy as np
 from datetime import datetime
 import sys
 import warnings
+import httpx
+
+# Liveness service configuration
+LIVENESS_SERVICE_URL = os.getenv("LIVENESS_SERVICE_URL", "http://localhost:5001")
+LIVENESS_ENABLED = os.getenv("LIVENESS_ENABLED", "true").lower() == "true"
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
@@ -105,6 +110,9 @@ class RecognizeResponse(BaseModel):
     studentId: Optional[str] = None
     studentName: Optional[str] = None
     confidence: float
+    is_live: Optional[bool] = None
+    liveness_confidence: Optional[float] = None
+    liveness_checks: Optional[Dict[str, Any]] = None
 
 class MarkAttendanceRequest(BaseModel):
     classId: str
@@ -157,6 +165,7 @@ async def train_class(request: TrainRequest):
 async def recognize_face(request: RecognizeRequest):
     """
     Recognize a face from webcam capture.
+    Now includes liveness detection before face recognition.
     Compares against stored embeddings for the given class.
     """
     try:
@@ -164,24 +173,56 @@ async def recognize_face(request: RecognizeRequest):
         
         # Decode base64 image
         try:
-            # Handle data URLs (e.g., "data:image/jpeg;base64,/9j/4AAQ...")
             base64_string = request.image_base64
             if base64_string.startswith('data:image'):
-                # Extract just the base64 part after the comma
                 base64_string = base64_string.split(',', 1)[1]
             
             image_data = base64.b64decode(base64_string)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid base64 image data: {str(e)}")
         
-        # Perform recognition
+        # Step 1: Perform liveness check (if enabled)
+        liveness_result = None
+        if LIVENESS_ENABLED:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    liveness_response = await client.post(
+                        f"{LIVENESS_SERVICE_URL}/liveness/check",
+                        json={"image_base64": request.image_base64}
+                    )
+                    
+                    if liveness_response.status_code == 200:
+                        liveness_result = liveness_response.json()
+                        print(f"Liveness check: is_live={liveness_result.get('is_live')}, confidence={liveness_result.get('confidence')}")
+                        
+                        # If not live, return early with spoof detection
+                        if not liveness_result.get('is_live', False):
+                            print("⚠️ Spoof detected - liveness check failed")
+                            return RecognizeResponse(
+                                matched=False,
+                                confidence=0.0,
+                                is_live=False,
+                                liveness_confidence=liveness_result.get('confidence', 0.0),
+                                liveness_checks=liveness_result.get('checks')
+                            )
+                    else:
+                        print(f"Liveness service returned status {liveness_response.status_code}")
+            except httpx.ConnectError:
+                print("⚠️ Liveness service not available, proceeding without liveness check")
+            except Exception as e:
+                print(f"⚠️ Liveness check error: {e}, proceeding without liveness check")
+        
+        # Step 2: Perform face recognition
         result = await recognition_service.recognize_face(request.classId, image_data)
         
         return RecognizeResponse(
             matched=result["matched"],
             studentId=result.get("studentId"),
             studentName=result.get("studentName"),
-            confidence=result.get("confidence", 0.0)
+            confidence=result.get("confidence", 0.0),
+            is_live=liveness_result.get('is_live') if liveness_result else None,
+            liveness_confidence=liveness_result.get('confidence') if liveness_result else None,
+            liveness_checks=liveness_result.get('checks') if liveness_result else None
         )
         
     except HTTPException:

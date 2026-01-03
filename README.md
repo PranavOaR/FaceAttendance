@@ -37,12 +37,14 @@
 - ✅ **Student Analytics** - Charts & risk alerts for attendance trends
 - ✅ **Email Notifications** - Automatic parent alerts via Resend
 - ✅ **Secure Authentication** - Firebase-powered user authentication
+- ✅ **Liveness Detection** - Anti-spoofing to prevent photo fraud
 
 </td>
 <td width="50%">
 
 ### 🚀 Advanced Capabilities
 - 🔐 **Face Verification** - 99.2% accuracy with deep learning
+- 🛡️ **Anti-Spoofing** - Flask-based liveness detection microservice
 - 📊 **Real-Time Dashboard** - Attendance trends chart & risk alerts
 - 📧 **Parent Notifications** - Email alerts when students are absent
 - 📥 **Bulk Export** - Download attendance as CSV/Excel reports
@@ -71,10 +73,16 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                     API LAYER                               │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │      FastAPI Backend (Python 3.8+)                  │   │
+│  │      FastAPI Backend (Python 3.8+) :8000             │   │
 │  │  - Real-time face recognition engine                │   │
 │  │  - Embeddings & model training pipeline             │   │
 │  │  - CORS-enabled for cross-origin requests           │   │
+│  └──────────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │      Flask Liveness API (Python) :5001  [NEW]        │   │
+│  │  - Anti-spoofing liveness detection                 │   │
+│  │  - Texture, color, moiré pattern analysis           │   │
+│  │  - Eye blink detection                              │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                           ↓↑ SDK Calls
@@ -141,10 +149,17 @@
 │  • JSON Web Tokens - Secure authentication     │
 └────────────────────────────────────────────────┘
 
-┌─ Email Notifications ──────────────────────────┐
+┌─ Email Notifications ──────────────────────────────────────┐
 │  • Resend API - Transactional email service    │
 │  • Automatic parent alerts for absent students │
 │  • Professional HTML email templates           │
+└────────────────────────────────────────────────┘
+
+┌─ Liveness Detection (Flask API :5001) ─────────┐
+│  • Flask 3.0 - Microservice architecture       │
+│  • Texture/Color analysis - Anti-photo spoof   │
+│  • Moiré pattern detection - Anti-screen spoof │
+│  • Eye blink detection - Liveness verification │
 └────────────────────────────────────────────────┘
 ```
 
@@ -457,6 +472,7 @@ Database Query             < 100ms     ✓ 78ms
 - [x] Student risk alerts (below 75%)
 - [x] Email notifications to parents
 - [x] Modern, professional UI redesign
+- [x] **Liveness Detection** - Anti-spoofing with Flask API
 
 ### Phase 2 📅 (Planned)
 - [ ] Bulk CSV import for students
@@ -468,7 +484,6 @@ Database Query             < 100ms     ✓ 78ms
 ### Phase 3 🚀 (Future)
 - [ ] Mobile app (React Native)
 - [ ] Advanced analytics & ML predictions
-- [ ] Real-time liveness detection
 - [ ] Integration with school ERP systems
 
 ---
@@ -523,6 +538,6 @@ If IDGuard helped you, please consider:
 [![Forks](https://img.shields.io/github/forks/PranavOaR/FaceAttendance?style=social)](https://github.com/PranavOaR/FaceAttendance)
 [![Issues](https://img.shields.io/github/issues/PranavOaR/FaceAttendance?style=social)](https://github.com/PranavOaR/FaceAttendance/issues)
 
-Last updated: December 10, 2024 | Version 1.1.0
+Last updated: January 3, 2026 | Version 1.2.0
 
 </div>

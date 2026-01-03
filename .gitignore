@@ -60,3 +60,4 @@ backend/embeddings_cache.pkl
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+__pycache__/
