@@ -132,6 +132,55 @@ async def root():
         "status": "healthy"
     }
 
+@app.get("/training/status/{class_id}")
+async def get_training_status(class_id: str):
+    """
+    Check if face recognition model is trained for a class.
+    Returns training status and whether retraining is needed.
+    """
+    try:
+        # Get current student count
+        students = await firebase_service.get_class_students(class_id)
+        student_count = len(students)
+        
+        # Load existing embeddings
+        embeddings = await recognition_service.load_class_embeddings(class_id)
+        embedding_count = len(embeddings) if embeddings else 0
+        
+        # Check if all students have embeddings
+        is_trained = embedding_count > 0
+        needs_retrain = embedding_count < student_count
+        
+        # Find students without embeddings
+        untrained_students = []
+        if embeddings and students:
+            trained_ids = set(embeddings.keys())
+            for student in students:
+                if student['id'] not in trained_ids:
+                    untrained_students.append(student['name'])
+        
+        return {
+            "trained": is_trained,
+            "studentCount": student_count,
+            "embeddingCount": embedding_count,
+            "needsRetrain": needs_retrain,
+            "untrainedStudents": untrained_students,
+            "message": "Ready for scanning" if is_trained and not needs_retrain else 
+                       "Retraining needed - new students added" if needs_retrain else
+                       "Training required"
+        }
+        
+    except Exception as e:
+        print(f"Error checking training status: {e}")
+        return {
+            "trained": False,
+            "studentCount": 0,
+            "embeddingCount": 0,
+            "needsRetrain": True,
+            "error": str(e)
+        }
+
+
 @app.post("/train", response_model=TrainResponse)
 async def train_class(request: TrainRequest):
     """

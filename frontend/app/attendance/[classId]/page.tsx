@@ -27,6 +27,13 @@ export default function AttendancePage() {
   const [recognizedCount, setRecognizedCount] = useState(0);
   const [livenessStatus, setLivenessStatus] = useState<'unknown' | 'live' | 'spoof'>('unknown');
   const [livenessConfidence, setLivenessConfidence] = useState<number | null>(null);
+  const [trainingStatus, setTrainingStatus] = useState<{
+    trained: boolean;
+    needsRetrain: boolean;
+    embeddingCount: number;
+    studentCount: number;
+    message: string;
+  } | null>(null);
   const webcamRef = useRef<any>(null);
   const scanIntervalRef = useRef<any>(null);
   const recognizedStudentsRef = useRef<Set<string>>(new Set());
@@ -110,6 +117,29 @@ export default function AttendancePage() {
     }
   };
 
+  // Check training status on page load
+  const checkTrainingStatus = async () => {
+    if (!classId) return;
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/training/status/${classId}`);
+      if (response.ok) {
+        const status = await response.json();
+        setTrainingStatus(status);
+        console.log('Training status:', status);
+      }
+    } catch (error) {
+      console.error('Failed to check training status:', error);
+    }
+  };
+
+  // Check training status when class loads
+  useEffect(() => {
+    if (classData && classId) {
+      checkTrainingStatus();
+    }
+  }, [classData, classId]);
+
   // Train the face recognition model for this class
   const trainFaceRecognition = async () => {
     if (!classData) return;
@@ -152,6 +182,8 @@ export default function AttendancePage() {
 
       const result = await response.json();
       setIsTraining(false);
+      // Refresh training status after training
+      await checkTrainingStatus();
       toast.success(`Model trained successfully! Processed ${result.studentsProcessed} students.`, { id: 'train' });
       return true;
     } catch (error: any) {
@@ -313,10 +345,21 @@ export default function AttendancePage() {
     activeScanToastRef.current = toastId as string;
 
     try {
-      // First, ensure the model is trained
-      const isTrained = await trainFaceRecognition();
-      if (!isTrained) {
-        throw new Error('Model training failed. Cannot proceed with recognition.');
+      // Check if model is already trained (OPTIMIZED - skip training if embeddings exist)
+      let needsTraining = true;
+
+      if (trainingStatus?.trained && !trainingStatus?.needsRetrain) {
+        // Model already trained and up to date - skip training!
+        console.log('✓ Model already trained, skipping training step');
+        toast.success('Model already trained! Starting scan...', { id: 'scan', duration: 2000 });
+        needsTraining = false;
+      } else {
+        // Need to train (first time or new students added)
+        console.log('Training required:', trainingStatus?.message || 'First training');
+        const isTrained = await trainFaceRecognition();
+        if (!isTrained) {
+          throw new Error('Model training failed. Cannot proceed with recognition.');
+        }
       }
 
       // Update toast to scanning status
@@ -793,7 +836,7 @@ export default function AttendancePage() {
                   <div className="absolute top-2 right-2 z-10">
                     <div className="bg-white/90 rounded-lg px-3 py-2 shadow-lg flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full animate-pulse ${livenessStatus === 'live' ? 'bg-green-500' :
-                          livenessStatus === 'spoof' ? 'bg-red-500' : 'bg-blue-500'
+                        livenessStatus === 'spoof' ? 'bg-red-500' : 'bg-blue-500'
                         }`}></div>
                       <span className="text-xs font-medium text-gray-700">
                         {livenessStatus === 'spoof' ? '🚫 Spoof!' : `Scanning... ${recognizedCount} found`}
@@ -820,21 +863,59 @@ export default function AttendancePage() {
 
               {/* Action Buttons */}
               <div className="space-y-3">
-                {/* Train Model Button */}
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={trainFaceRecognition}
-                  disabled={isScanning}
-                  className="w-full py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <div className="flex items-center justify-center">
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                    Train Model
+                {/* Training Status Indicator */}
+                {trainingStatus && (
+                  <div className={`px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${trainingStatus.trained && !trainingStatus.needsRetrain
+                      ? 'bg-green-50 text-green-700 border border-green-200'
+                      : trainingStatus.needsRetrain
+                        ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                        : 'bg-gray-50 text-gray-600 border border-gray-200'
+                    }`}>
+                    {trainingStatus.trained && !trainingStatus.needsRetrain ? (
+                      <>
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <span>Model Ready ({trainingStatus.embeddingCount}/{trainingStatus.studentCount} students)</span>
+                      </>
+                    ) : trainingStatus.needsRetrain ? (
+                      <>
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        <span>New students added - retrain needed</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                        </svg>
+                        <span>Training required for first use</span>
+                      </>
+                    )}
                   </div>
-                </motion.button>
+                )}
+
+                {/* Train/Retrain Model Button - Only show if needed */}
+                {(!trainingStatus?.trained || trainingStatus?.needsRetrain) && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={trainFaceRecognition}
+                    disabled={isScanning || isTraining}
+                    className={`w-full py-2 px-4 border text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${trainingStatus?.needsRetrain
+                        ? 'border-yellow-400 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 focus:ring-yellow-500'
+                        : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50 focus:ring-blue-500'
+                      }`}
+                  >
+                    <div className="flex items-center justify-center">
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                      {trainingStatus?.needsRetrain ? 'Retrain Model' : 'Train Model'}
+                    </div>
+                  </motion.button>
+                )}
 
                 {/* Scan Buttons */}
                 {!isScanning && !scanComplete && (
@@ -848,7 +929,9 @@ export default function AttendancePage() {
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
-                      Start Face Scan
+                      {trainingStatus?.trained && !trainingStatus?.needsRetrain
+                        ? 'Start Face Scan'
+                        : 'Train & Start Scan'}
                     </div>
                   </motion.button>
                 )}
