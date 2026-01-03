@@ -99,7 +99,7 @@ export default function AttendanceCalendar({ attendanceRecords, totalStudents }:
     const selectedRecord = selectedDate ? attendanceMap[selectedDate] : null;
 
     return (
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 max-w-md">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-semibold text-slate-900">Attendance Calendar</h3>
