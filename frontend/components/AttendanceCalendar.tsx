@@ -10,12 +10,19 @@ interface AttendanceRecord {
     absentStudents: string[];
 }
 
+interface Student {
+    id: string;
+    name: string;
+    srn?: string;
+}
+
 interface AttendanceCalendarProps {
     attendanceRecords: AttendanceRecord[];
     totalStudents: number;
+    students: Student[];
 }
 
-export default function AttendanceCalendar({ attendanceRecords, totalStudents }: AttendanceCalendarProps) {
+export default function AttendanceCalendar({ attendanceRecords, totalStudents, students }: AttendanceCalendarProps) {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
@@ -218,18 +225,52 @@ export default function AttendanceCalendar({ attendanceRecords, totalStudents }:
                                 </svg>
                             </button>
                         </div>
-                        <div className="flex gap-4">
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-green-500" />
-                                <span className="text-sm text-slate-600">
-                                    {selectedRecord.presentStudents.length} Present
+
+                        {/* Present Students */}
+                        <div className="mb-3">
+                            <div className="flex items-center gap-2 mb-1">
+                                <div className="w-2 h-2 rounded-full bg-green-500" />
+                                <span className="text-xs font-medium text-slate-700">
+                                    Present ({selectedRecord.presentStudents.length})
                                 </span>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-red-400" />
-                                <span className="text-sm text-slate-600">
-                                    {selectedRecord.absentStudents.length} Absent
+                            <div className="flex flex-wrap gap-1 ml-4">
+                                {selectedRecord.presentStudents.length > 0 ? (
+                                    selectedRecord.presentStudents.map(studentId => {
+                                        const student = students.find(s => s.id === studentId);
+                                        return (
+                                            <span key={studentId} className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                                                {student?.name || studentId}
+                                            </span>
+                                        );
+                                    })
+                                ) : (
+                                    <span className="text-xs text-slate-400">No students present</span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Absent Students */}
+                        <div>
+                            <div className="flex items-center gap-2 mb-1">
+                                <div className="w-2 h-2 rounded-full bg-red-400" />
+                                <span className="text-xs font-medium text-slate-700">
+                                    Absent ({selectedRecord.absentStudents.length})
                                 </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1 ml-4">
+                                {selectedRecord.absentStudents.length > 0 ? (
+                                    selectedRecord.absentStudents.map(studentId => {
+                                        const student = students.find(s => s.id === studentId);
+                                        return (
+                                            <span key={studentId} className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">
+                                                {student?.name || studentId}
+                                            </span>
+                                        );
+                                    })
+                                ) : (
+                                    <span className="text-xs text-slate-400">No students absent</span>
+                                )}
                             </div>
                         </div>
                     </motion.div>

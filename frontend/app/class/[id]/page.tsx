@@ -246,6 +246,7 @@ export default function ClassPage() {
           <AttendanceCalendar
             attendanceRecords={classData.attendanceRecords || []}
             totalStudents={students.length}
+            students={students}
           />
         </motion.div>
 
