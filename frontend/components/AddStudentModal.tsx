@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AddStudentForm, Student } from '@/lib/types';
 import { usePhotoUpload } from '@/hooks/useStorage';
@@ -37,6 +37,19 @@ export default function AddStudentModal({
 
   const { user } = useAuth();
   const { uploadPhoto, uploading, progress, error: uploadError } = usePhotoUpload();
+
+  // Sync form data when initialData changes (fixes edit student showing stale data)
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        name: initialData?.name || '',
+        srn: initialData?.srn || '',
+        photo: null,
+        parentEmail: initialData?.parentEmail || ''
+      });
+      setPhotoPreview(initialData?.photo || '');
+    }
+  }, [initialData, isOpen]);
 
   // Utility function to convert file to base64
   const convertFileToBase64 = (file: File): Promise<string> => {

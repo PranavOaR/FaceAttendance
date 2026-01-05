@@ -237,120 +237,128 @@ export default function ClassPage() {
           </div>
         </motion.div>
 
-        {/* Attendance Calendar */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.08 }}
-          className="mb-8"
-        >
-          <AttendanceCalendar
-            attendanceRecords={classData.attendanceRecords || []}
-            totalStudents={students.length}
-            students={students}
-          />
-        </motion.div>
+        {/* Calendar and Students Side-by-Side */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Attendance Calendar - Left Side */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08 }}
+            className="lg:col-span-2"
+          >
+            <AttendanceCalendar
+              attendanceRecords={classData.attendanceRecords || []}
+              totalStudents={students.length}
+              students={students}
+            />
+          </motion.div>
 
-        {/* Students Grid */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-slate-900">Students</h2>
-            {students.length > 0 && (
-              <div className="relative">
-                <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search by name or SRN..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent w-64"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          {/* Students Grid - Right Side */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="lg:col-span-3"
+          >
+            <div className="bg-white rounded-xl border border-slate-200 p-5 h-full">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-semibold text-slate-900">Students</h2>
+                {students.length > 0 && (
+                  <div className="relative">
+                    <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {students.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <h3 className="text-base font-medium text-slate-900 mb-1">No students enrolled</h3>
-              <p className="text-sm text-slate-500 mb-6">Add students to start tracking attendance</p>
-              <button
-                onClick={() => setIsAddModalOpen(true)}
-                className="inline-flex items-center px-4 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 transition-colors"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                Add Your First Student
-              </button>
-            </div>
-          ) : (
-            <>
-              {(() => {
-                const filteredStudents = students.filter(student =>
-                  student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  (student.srn && student.srn.toLowerCase().includes(searchQuery.toLowerCase()))
-                );
-
-                if (filteredStudents.length === 0 && searchQuery) {
-                  return (
-                    <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
-                      <svg className="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                      <p className="text-sm text-slate-500">No students found matching "{searchQuery}"</p>
+                    <input
+                      type="text"
+                      placeholder="Search by name or SRN..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent w-56"
+                    />
+                    {searchQuery && (
                       <button
                         onClick={() => setSearchQuery('')}
-                        className="mt-2 text-sm text-slate-900 hover:underline"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                       >
-                        Clear search
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                       </button>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                    {filteredStudents.map((student, index) => (
-                      <motion.div
-                        key={student.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.03 * index }}
-                      >
-                        <StudentCard
-                          student={student}
-                          onEdit={handleEditStudent}
-                          onDelete={handleDeleteStudent}
-                        />
-                      </motion.div>
-                    ))}
+                    )}
                   </div>
-                );
-              })()}
-            </>
-          )}
-        </motion.div>
+                )}
+              </div>
+
+              {students.length === 0 ? (
+                <div className="p-8 text-center">
+                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-base font-medium text-slate-900 mb-1">No students enrolled</h3>
+                  <p className="text-sm text-slate-500 mb-6">Add students to start tracking attendance</p>
+                  <button
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="inline-flex items-center px-4 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 transition-colors"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Add Your First Student
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {(() => {
+                    const filteredStudents = students.filter(student =>
+                      student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      (student.srn && student.srn.toLowerCase().includes(searchQuery.toLowerCase()))
+                    );
+
+                    if (filteredStudents.length === 0 && searchQuery) {
+                      return (
+                        <div className="p-8 text-center">
+                          <svg className="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                          <p className="text-sm text-slate-500">No students found matching "{searchQuery}"</p>
+                          <button
+                            onClick={() => setSearchQuery('')}
+                            className="mt-2 text-sm text-slate-900 hover:underline"
+                          >
+                            Clear search
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="max-h-[500px] overflow-y-auto pr-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                          {filteredStudents.map((student, index) => (
+                            <motion.div
+                              key={student.id}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.03 * index }}
+                            >
+                              <StudentCard
+                                student={student}
+                                onEdit={handleEditStudent}
+                                onDelete={handleDeleteStudent}
+                              />
+                            </motion.div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+          </motion.div>
+        </div>
       </main>
 
       {/* Add Student Modal */}

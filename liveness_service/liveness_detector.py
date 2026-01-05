@@ -54,10 +54,10 @@ class LivenessDetector:
         # Eye aspect ratio threshold for blink detection
         self.EAR_THRESHOLD = 0.25
         
-        # Liveness thresholds
-        self.TEXTURE_THRESHOLD = 15.0  # Laplacian variance
-        self.QUALITY_THRESHOLD = 50.0   # Blur detection
-        self.COLOR_SCORE_THRESHOLD = 0.3
+        # Liveness thresholds (balanced to accept real faces but reject spoofs)
+        self.TEXTURE_THRESHOLD = 10.0   # Laplacian variance (balanced)
+        self.QUALITY_THRESHOLD = 30.0   # Blur detection (balanced)
+        self.COLOR_SCORE_THRESHOLD = 0.2  # Skin color ratio (balanced)
         
         # Track eye states for blink detection
         self.eye_history = []
@@ -360,7 +360,7 @@ class LivenessDetector:
         quality_passed = blur_score >= self.QUALITY_THRESHOLD
         color_passed = color_score >= self.COLOR_SCORE_THRESHOLD
         eyes_detected = num_eyes >= 1
-        moire_low = moire_score < 0.3  # Low moiré pattern
+        moire_low = moire_score < 0.35  # Balanced moiré pattern threshold
         
         # Calculate overall confidence
         checks_passed = sum([
@@ -380,8 +380,8 @@ class LivenessDetector:
         confidence += 0.15 * (1.0 - min(moire_score * 2, 1.0)) # Anti-moiré weight
         
         # Determine if live
-        # Must pass at least 3 checks and have confidence > 0.5
-        is_live = checks_passed >= 3 and confidence >= 0.5
+        # Need at least 2 checks and 0.4 confidence (balanced)
+        is_live = checks_passed >= 2 and confidence >= 0.4
         
         return {
             "is_live": is_live,

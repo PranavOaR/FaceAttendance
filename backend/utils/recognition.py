@@ -12,7 +12,7 @@ class RecognitionService:
         # Recognition threshold for face distance (lower = more strict)
         # 0.6 is the recommended default for face_recognition library
         # 0.5 = strict (may miss some matches), 0.6 = balanced, 0.7 = lenient (more false positives)
-        self.recognition_threshold = 0.45  # Stricter threshold to reduce false positives
+        self.recognition_threshold = 0.55  # Balanced threshold (0.6 is library default)
     
     async def train_class_embeddings(self, class_id: str, students: List[Dict[str, Any]]) -> int:
         """
