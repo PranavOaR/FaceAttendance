@@ -8,18 +8,37 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Face Recognition Attendance System",
-  description: "Modern attendance tracking system using face recognition technology",
-  keywords: ["attendance", "face recognition", "education", "student management"],
-  authors: [{ name: "Face Recognition Attendance Team" }],
+  title: "IDGuard - Face Recognition Attendance",
+  description: "AI-powered face recognition attendance management system for educational institutions",
+  keywords: ["attendance", "face recognition", "education", "student management", "IDGuard"],
+  authors: [{ name: "IDGuard Team" }],
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "IDGuard",
+  },
+  formatDetection: {
+    telephone: false,
+  },
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/icons/icon-72x72.png', sizes: '72x72', type: 'image/png' },
+      { url: '/icons/icon-96x96.png', sizes: '96x96', type: 'image/png' },
+      { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512x512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
 };
 
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
+  maximumScale: 1,
+  themeColor: '#0f172a',
 };
 
 import { AuthProvider } from '@/hooks/useAuth';

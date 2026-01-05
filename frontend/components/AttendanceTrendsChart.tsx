@@ -73,7 +73,7 @@ export default function AttendanceTrendsChart({ data, loading }: AttendanceTrend
                                 borderRadius: '8px',
                                 fontSize: '12px'
                             }}
-                            formatter={(value: number) => [`${value}%`, 'Attendance']}
+                            formatter={(value) => [`${value ?? 0}%`, 'Attendance']}
                         />
                         <Line
                             type="monotone"
