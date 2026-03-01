@@ -10,10 +10,12 @@ import toast, { Toaster } from 'react-hot-toast';
 import { FloatingHeader } from '@/components/ui/floating-header';
 import StudentCard from '@/components/StudentCard';
 import AddStudentModal from '@/components/AddStudentModal';
+import BulkEnrollModal from '@/components/BulkEnrollModal';
 import AttendanceCalendar from '@/components/AttendanceCalendar';
 
 export default function ClassPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isBulkEnrollOpen, setIsBulkEnrollOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Force light mode
@@ -64,6 +66,10 @@ export default function ClassPage() {
     } catch (error: any) {
       toast.error(error.message || 'Failed to add student');
     }
+  };
+
+  const handleBulkEnroll = async (studentData: Omit<Student, 'id' | 'classId'>) => {
+    await addStudent(studentData);
   };
 
   const handleEditStudent = (student: Student) => {
@@ -170,6 +176,16 @@ export default function ClassPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                 </svg>
                 Mark Attendance
+              </button>
+
+              <button
+                onClick={() => setIsBulkEnrollOpen(true)}
+                className="inline-flex items-center px-4 py-2.5 border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Bulk Enroll
               </button>
 
               <button
@@ -366,6 +382,14 @@ export default function ClassPage() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSubmit={handleAddStudent}
+        classId={classId}
+      />
+
+      {/* Bulk Enroll Modal */}
+      <BulkEnrollModal
+        isOpen={isBulkEnrollOpen}
+        onClose={() => setIsBulkEnrollOpen(false)}
+        onEnroll={handleBulkEnroll}
         classId={classId}
       />
 
