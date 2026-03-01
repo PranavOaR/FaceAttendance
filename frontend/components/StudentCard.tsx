@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { Student } from '@/lib/types';
 import Image from 'next/image';
+import Link from 'next/link';
 
 interface StudentCardProps {
   student: Student;
@@ -104,6 +105,18 @@ export default function StudentCard({
         {/* Action Buttons (only show if not in attendance mode) */}
         {!attendanceStatus && (
           <div className="flex justify-center space-x-2">
+            <Link href={`/student/${student.classId}/${student.id}`}>
+              <motion.div
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                className="p-2 text-indigo-500 hover:bg-indigo-50 rounded-full transition-colors cursor-pointer"
+                title="View Analytics"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </motion.div>
+            </Link>
             <motion.button
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
