@@ -7,6 +7,7 @@ import { uploadStudentPhoto } from '@/lib/uploadPhoto';
 import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
+import * as XLSX from 'xlsx';
 
 interface BulkEnrollModalProps {
   isOpen: boolean;
@@ -27,6 +28,34 @@ interface ParsedRow {
 
 type Step = 'upload' | 'preview' | 'enrolling' | 'done';
 
+// ─── Shared row normaliser ────────────────────────────────────
+function normaliseRows(
+  raw: Record<string, string>[]
+): { name: string; srn: string; parentEmail: string }[] {
+  return raw
+    .map(row => {
+      // Case-insensitive key lookup
+      const get = (...keys: string[]) => {
+        for (const k of keys) {
+          const found = Object.keys(row).find(rk => rk.toLowerCase().trim() === k.toLowerCase());
+          if (found) return (row[found] ?? '').toString().trim();
+        }
+        // Partial match fallback
+        for (const k of keys) {
+          const found = Object.keys(row).find(rk => rk.toLowerCase().includes(k.toLowerCase()));
+          if (found) return (row[found] ?? '').toString().trim();
+        }
+        return '';
+      };
+      return {
+        name: get('name', 'student name', 'full name'),
+        srn: get('srn', 'roll number', 'roll no', 'id').toUpperCase(),
+        parentEmail: get('parent email', 'parentemail', 'email', 'parent')
+      };
+    })
+    .filter(r => r.name && r.srn);
+}
+
 // ─── CSV parser ──────────────────────────────────────────────
 function parseCSV(text: string): { name: string; srn: string; parentEmail: string }[] {
   const lines = text
@@ -42,12 +71,10 @@ function parseCSV(text: string): { name: string; srn: string; parentEmail: strin
 
   const nameIdx = cols.findIndex(c => c === 'name' || c === 'student name' || c === 'full name');
   const srnIdx = cols.findIndex(c => c === 'srn' || c === 'roll number' || c === 'roll no' || c === 'id');
-  const emailIdx = cols.findIndex(c => c.includes('email') || c.includes('parent'));
 
   if (nameIdx === -1 || srnIdx === -1) return [];
 
-  return lines.slice(1).map(line => {
-    // Handle quoted fields
+  const rawRows = lines.slice(1).map(line => {
     const parts: string[] = [];
     let inQuote = false;
     let cur = '';
@@ -57,13 +84,19 @@ function parseCSV(text: string): { name: string; srn: string; parentEmail: strin
       cur += ch;
     }
     parts.push(cur.trim());
+    const obj: Record<string, string> = {};
+    cols.forEach((c, i) => { obj[c] = parts[i] || ''; });
+    return obj;
+  });
+  return normaliseRows(rawRows);
+}
 
-    return {
-      name: (parts[nameIdx] || '').trim(),
-      srn: (parts[srnIdx] || '').trim().toUpperCase(),
-      parentEmail: emailIdx >= 0 ? (parts[emailIdx] || '').trim() : ''
-    };
-  }).filter(r => r.name && r.srn);
+// ─── XLSX parser ─────────────────────────────────────────────
+function parseXLSX(buffer: ArrayBuffer): { name: string; srn: string; parentEmail: string }[] {
+  const workbook = XLSX.read(buffer, { type: 'array' });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const raw = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' });
+  return normaliseRows(raw);
 }
 
 // ─── Component ───────────────────────────────────────────────
@@ -89,13 +122,18 @@ export default function BulkEnrollModal({ isOpen, onClose, onEnroll, classId }: 
   const [errorCount, setErrorCount] = useState(0);
 
   // ── File handlers ──
+  const isSpreadsheet = (f: File) =>
+    f.name.endsWith('.csv') || f.name.endsWith('.xlsx') ||
+    f.type === 'text/csv' ||
+    f.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
   const handleCsvDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setCsvDragOver(false);
     const file = e.dataTransfer.files?.[0];
-    if (file && (file.name.endsWith('.csv') || file.type === 'text/csv')) setCsvFile(file);
-    else toast.error('Please drop a .csv file');
-  }, []);
+    if (file && isSpreadsheet(file)) setCsvFile(file);
+    else toast.error('Please drop a .csv or .xlsx file');
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePhotoDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -113,16 +151,23 @@ export default function BulkEnrollModal({ isOpen, onClose, onEnroll, classId }: 
   // ── Parse & match ──
   const handleParse = async () => {
     setParseError('');
-    if (!csvFile) { setParseError('Please upload a CSV file.'); return; }
+    if (!csvFile) { setParseError('Please upload a CSV or XLSX file.'); return; }
     if (!photoFiles.length) { setParseError('Please upload at least one photo.'); return; }
 
     try {
-      const text = await csvFile.text();
-      const parsed = parseCSV(text);
+      let parsed: { name: string; srn: string; parentEmail: string }[];
+
+      if (csvFile.name.endsWith('.xlsx')) {
+        const buffer = await csvFile.arrayBuffer();
+        parsed = parseXLSX(buffer);
+      } else {
+        const text = await csvFile.text();
+        parsed = parseCSV(text);
+      }
 
       if (!parsed.length) {
         setParseError(
-          'Could not parse CSV. Make sure it has columns: Name, SRN (and optionally ParentEmail).'
+          'Could not parse the file. Make sure it has columns: Name, SRN (and optionally ParentEmail).'
         );
         return;
       }
@@ -295,7 +340,8 @@ export default function BulkEnrollModal({ isOpen, onClose, onEnroll, classId }: 
                       <code className="block bg-white border border-blue-100 rounded px-2 py-1 font-mono text-blue-700">
                         Name, SRN, ParentEmail
                       </code>
-                      <p className="mt-1.5">Photos must be image files named by SRN, e.g. <code className="font-mono">PES1UG20CS001.jpg</code></p>
+                      <p className="mt-1.5">Accepted formats: <span className="font-semibold">.csv</span> or <span className="font-semibold">.xlsx</span> (Excel). Column names are case-insensitive.</p>
+                      <p className="mt-1">Photos must be image files named by SRN, e.g. <code className="font-mono">PES1UG20CS001.jpg</code></p>
                     </div>
 
                     {/* CSV drop zone */}
@@ -314,9 +360,9 @@ export default function BulkEnrollModal({ isOpen, onClose, onEnroll, classId }: 
                         <input
                           ref={csvInputRef}
                           type="file"
-                          accept=".csv,text/csv"
+                          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                           className="hidden"
-                          onChange={e => { const f = e.target.files?.[0]; if (f) setCsvFile(f); }}
+                          onChange={e => { const f = e.target.files?.[0]; if (f && isSpreadsheet(f)) setCsvFile(f); }}
                         />
                         {csvFile ? (
                           <div className="flex items-center justify-center gap-2 text-green-700">
@@ -334,7 +380,7 @@ export default function BulkEnrollModal({ isOpen, onClose, onEnroll, classId }: 
                             <svg className="w-8 h-8 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
-                            <p className="text-sm">Drop CSV here or <span className="text-slate-900 font-medium">click to browse</span></p>
+                            <p className="text-sm">Drop CSV / Excel here or <span className="text-slate-900 font-medium">click to browse</span></p>
                           </div>
                         )}
                       </div>
