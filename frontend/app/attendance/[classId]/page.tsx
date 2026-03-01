@@ -9,7 +9,7 @@ import { useClass, useStudents, useAttendance } from '@/hooks/useFirestore';
 import { downloadCSV } from '@/utils/storage';
 import toast, { Toaster } from 'react-hot-toast';
 import { FloatingHeader } from '@/components/ui/floating-header';
-import { TrainingLoader, ScanningLoader } from '@/components/ui/loader';
+import { TrainingLoader } from '@/components/ui/loader';
 import StudentCard from '@/components/StudentCard';
 import Webcam from 'react-webcam';
 
@@ -21,12 +21,9 @@ export default function AttendancePage() {
     document.documentElement.classList.remove('dark');
     document.body.classList.remove('dark');
   }, []);
-  const [isScanning, setIsScanning] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
   const [scanComplete, setScanComplete] = useState(false);
   const [recognizedCount, setRecognizedCount] = useState(0);
-  const [livenessStatus, setLivenessStatus] = useState<'unknown' | 'live' | 'spoof'>('unknown');
-  const [livenessConfidence, setLivenessConfidence] = useState<number | null>(null);
   const [isBatchScanning, setIsBatchScanning] = useState(false);
   const [showBatchResult, setShowBatchResult] = useState(false);
   const [batchResult, setBatchResult] = useState<{
@@ -43,9 +40,7 @@ export default function AttendancePage() {
     message: string;
   } | null>(null);
   const webcamRef = useRef<any>(null);
-  const scanIntervalRef = useRef<any>(null);
   const recognizedStudentsRef = useRef<Set<string>>(new Set());
-  const activeScanToastRef = useRef<string | null>(null);
 
   // Cleanup management refs
   const mountedRef = useRef<boolean>(true);
@@ -218,265 +213,6 @@ export default function AttendancePage() {
     }
   };
 
-  // Capture webcam frame and recognize face
-  const recognizeFace = async () => {
-    if (!webcamRef.current || !classData) {
-      console.log('Recognition skipped: webcam or classData not available');
-      return null;
-    }
-
-    try {
-      // Capture webcam image
-      const imageSrc = webcamRef.current.getScreenshot();
-      if (!imageSrc) {
-        throw new Error('Failed to capture image from webcam');
-      }
-
-      console.log(`Captured image from webcam: ${imageSrc.substring(0, 50)}...`);
-
-      const controller = new AbortController();
-      activeControllersRef.current.add(controller);
-
-      const timeoutId = setTimeout(() => controller.abort('Recognition timeout'), 8000); // 8 second timeout
-      activeTimeoutsRef.current.add(timeoutId);
-
-      // Send to backend for recognition
-      const response = await fetch(`${BACKEND_URL}/recognize`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          classId,
-          image_base64: imageSrc
-        }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-      activeTimeoutsRef.current.delete(timeoutId);
-      activeControllersRef.current.delete(controller);
-      console.log('Recognition response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Recognition response error:', errorText);
-        throw new Error(`Recognition failed: ${response.statusText} - ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('Recognition result:', result);
-      return result;
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.error('Recognition timeout:', error);
-        throw new Error('Recognition took too long to respond');
-      }
-      console.error('Recognition error:', error);
-      throw error;
-    }
-  };
-
-  // Synchronize local UI state with recognized students from backend
-  const updateAttendanceFromBackend = async (studentId: string) => {
-    try {
-      // Get fresh class data to verify the mark was successful
-      const response = await fetch(`${BACKEND_URL}/classes/${classId}/students`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-
-      if (response.ok) {
-        const classData = await response.json();
-        // We can verify from backend if needed, but frontend is source of truth for UI
-        console.log(`Verified student ${studentId} marked in backend`);
-      }
-    } catch (error) {
-      console.warn('Could not verify backend state:', error);
-      // Continue anyway - frontend state is maintained
-    }
-  };
-
-  // Mark attendance for a recognized student
-  const markStudentAttendance = async (studentId: string) => {
-    try {
-      const controller = new AbortController();
-      activeControllersRef.current.add(controller);
-
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-      activeTimeoutsRef.current.add(timeoutId);
-
-      const response = await fetch(`${BACKEND_URL}/mark_attendance`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          classId,
-          studentId
-        }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-      activeTimeoutsRef.current.delete(timeoutId);
-      activeControllersRef.current.delete(controller);
-
-      if (!response.ok) {
-        throw new Error(`Failed to mark attendance: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      return result;
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.error('Mark attendance timeout:', error);
-        // Don't throw - continue scanning
-        return null;
-      }
-      console.error('Mark attendance error:', error);
-      // Don't throw - continue scanning even if marking fails
-      return null;
-    }
-  };
-
-  // Real-time face recognition scanning with manual control
-  const startFaceRecognition = async () => {
-    if (!classData) return;
-
-    setIsScanning(true);
-    setScanComplete(false);
-    recognizedStudentsRef.current = new Set();
-    setRecognizedCount(0);
-
-    // Clear any existing scan toasts
-    toast.dismiss('scan');
-
-    // Show loading toast only once
-    const toastId = toast.loading('Starting face recognition scan...', { id: 'scan' });
-    activeScanToastRef.current = toastId as string;
-
-    try {
-      // Check if model is already trained (OPTIMIZED - skip training if embeddings exist)
-      let needsTraining = true;
-
-      if (trainingStatus?.trained && !trainingStatus?.needsRetrain) {
-        // Model already trained and up to date - skip training!
-        console.log('✓ Model already trained, skipping training step');
-        toast.success('Model already trained! Starting scan...', { id: 'scan', duration: 2000 });
-        needsTraining = false;
-      } else {
-        // Need to train (first time or new students added)
-        console.log('Training required:', trainingStatus?.message || 'First training');
-        const isTrained = await trainFaceRecognition();
-        if (!isTrained) {
-          throw new Error('Model training failed. Cannot proceed with recognition.');
-        }
-      }
-
-      // Update toast to scanning status
-      toast.loading('Scanning for faces... Look at the camera! Click "Stop Scan" when done.', { id: 'scan' });
-
-      // Scan for faces every 2 seconds continuously until manually stopped
-      const scanInterval = 2000; // 2 seconds
-
-      scanIntervalRef.current = setInterval(async () => {
-        try {
-          console.log(`Scanning for faces... Currently found: ${recognizedStudentsRef.current.size}`);
-
-          const result = await recognizeFace();
-          console.log(`Scan result:`, result);
-
-          // Handle liveness detection result
-          if (result?.is_live !== undefined) {
-            setLivenessStatus(result.is_live ? 'live' : 'spoof');
-            setLivenessConfidence(result.liveness_confidence || null);
-
-            // If spoof detected, show warning and skip recognition
-            if (result.is_live === false) {
-              console.log('⚠️ Spoof detected - skipping recognition');
-              toast.error('🚫 Spoof Detected! Please show your real face, not a photo.', {
-                duration: 3000,
-                icon: '🛡️'
-              });
-              return; // Skip face recognition for this frame
-            }
-          }
-
-          if (result?.matched && result.studentId) {
-            if (!recognizedStudentsRef.current.has(result.studentId)) {
-              console.log(`New face detected: ${result.studentName}, marking as present`);
-              recognizedStudentsRef.current.add(result.studentId);
-              setRecognizedCount(recognizedStudentsRef.current.size);
-
-              // Mark student as present in local state - ONLY update the specific student
-              setAttendanceRecords(prev => {
-                const updated = [...prev];
-                const studentIndex = updated.findIndex(r => r.studentId === result.studentId);
-                if (studentIndex >= 0 && updated[studentIndex].status !== 'present') {
-                  console.log(`Updating UI: marking ${result.studentName} as present`);
-                  updated[studentIndex] = { ...updated[studentIndex], status: 'present' };
-                }
-                return updated;
-              });
-
-              // Mark attendance in backend
-              const markResult = await markStudentAttendance(result.studentId);
-              if (markResult) {
-                console.log(`Backend marked attendance for ${result.studentName}`);
-              }
-
-              // Show success with liveness info
-              const livenessInfo = result.is_live ? ' ✓ Live' : '';
-              toast.success(`${result.studentName} marked present! (${(result.confidence * 100).toFixed(0)}%${livenessInfo})`, {
-                duration: 3000
-              });
-            } else {
-              console.log(`Student ${result.studentName} already recognized this session`);
-            }
-          } else if (result?.matched === false) {
-            console.log('No face match found in this scan', result);
-            // Reset liveness status if no match
-            if (!result?.is_live) {
-              setLivenessStatus('unknown');
-            }
-          }
-
-        } catch (error: any) {
-          console.error('Scan error:', error);
-          // Continue scanning even if one frame fails
-          if (error.message.includes('timeout') || error.message.includes('too long')) {
-            // Silent timeout - don't show error toast every time
-            console.warn('Scan frame timeout, continuing...');
-          } else {
-            toast.error(`Scan error: ${error.message}`, { duration: 2000 });
-          }
-        }
-      }, scanInterval);
-
-    } catch (error: any) {
-      setIsScanning(false);
-      if (scanIntervalRef.current) {
-        clearInterval(scanIntervalRef.current);
-        scanIntervalRef.current = null;
-      }
-
-      // Clear the loading toast
-      toast.dismiss('scan');
-
-      if (error.message.includes('not running')) {
-        toast.error(
-          'Backend server is not running. Start it with: python -m uvicorn main:app --reload --port 8000',
-          { duration: 6000 }
-        );
-      } else {
-        toast.error(`Face recognition failed: ${error.message}`);
-      }
-    }
-  };
-
   // One-shot batch scan: capture a single frame and match ALL faces in it
   const runBatchScan = async () => {
     if (!webcamRef.current || !classData) return;
@@ -596,25 +332,6 @@ export default function AttendancePage() {
     }
   };
 
-  // Stop face recognition scanning manually
-  const stopFaceRecognition = () => {
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    setIsScanning(false);
-    setScanComplete(true);
-
-    // Dismiss ALL scan-related toasts
-    toast.dismiss('scan');
-    if (activeScanToastRef.current) {
-      toast.dismiss(activeScanToastRef.current);
-    }
-
-    // Show success message
-    toast.success(`Scan stopped! ${recognizedStudentsRef.current.size} students marked present.`, { duration: 4000 });
-  };
-
   // Cleanup on unmount - dismiss all toasts, clear intervals, timeouts, and abort controllers
   useEffect(() => {
     mountedRef.current = true;
@@ -622,12 +339,6 @@ export default function AttendancePage() {
     return () => {
       console.log('Component unmounting - cleaning up all resources');
       mountedRef.current = false;
-
-      // Clear scan interval
-      if (scanIntervalRef.current) {
-        clearInterval(scanIntervalRef.current);
-        scanIntervalRef.current = null;
-      }
 
       // Clear all active timeouts
       activeTimeoutsRef.current.forEach(timeoutId => {
@@ -647,9 +358,9 @@ export default function AttendancePage() {
   }, []);
 
   const toggleStudentAttendance = (studentId: string) => {
-    // Prevent toggling while scanning to avoid race conditions
-    if (isScanning) {
-      toast.error('Cannot manually toggle attendance while scanning. Stop the scan first.', {
+    // Prevent toggling while batch scanning to avoid race conditions
+    if (isBatchScanning) {
+      toast.error('Cannot manually toggle attendance while scanning. Wait for the batch scan to finish.', {
         duration: 2000
       });
       return;
@@ -947,16 +658,6 @@ export default function AttendancePage() {
                   className="w-full h-full object-cover rounded-lg"
                 />
 
-                {/* Face detection overlay - subtle green border instead of blue */}
-                {isScanning && (
-                  <div className="absolute inset-4 border-2 border-green-500 rounded-lg animate-pulse">
-                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-500"></div>
-                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-500"></div>
-                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-500"></div>
-                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-500"></div>
-                  </div>
-                )}
-
                 {/* Training Loader Overlay */}
                 {isTraining && (
                   <div className="absolute inset-0 bg-black/70 flex items-center justify-center rounded-lg z-10">
@@ -964,32 +665,13 @@ export default function AttendancePage() {
                   </div>
                 )}
 
-                {/* Scanning Loader Overlay */}
-                {isScanning && !isTraining && (
+                {/* Batch scanning overlay */}
+                {isBatchScanning && (
                   <div className="absolute top-2 right-2 z-10">
                     <div className="bg-white/90 rounded-lg px-3 py-2 shadow-lg flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full animate-pulse ${livenessStatus === 'live' ? 'bg-green-500' :
-                        livenessStatus === 'spoof' ? 'bg-red-500' : 'bg-blue-500'
-                        }`}></div>
-                      <span className="text-xs font-medium text-gray-700">
-                        {livenessStatus === 'spoof' ? '🚫 Spoof!' : `Scanning... ${recognizedCount} found`}
-                      </span>
+                      <div className="w-2 h-2 rounded-full animate-pulse bg-purple-500"></div>
+                      <span className="text-xs font-medium text-gray-700">Scanning all faces...</span>
                     </div>
-                  </div>
-                )}
-
-                {/* Liveness Status Indicator */}
-                {isScanning && !isTraining && livenessStatus !== 'unknown' && (
-                  <div className={`absolute bottom-2 left-2 z-10 px-3 py-1.5 rounded-lg shadow-lg flex items-center gap-2 ${livenessStatus === 'live' ? 'bg-green-500/90' : 'bg-red-500/90'
-                    }`}>
-                    <span className="text-white text-xs font-semibold">
-                      {livenessStatus === 'live' ? '🛡️ LIVE' : '⚠️ SPOOF DETECTED'}
-                    </span>
-                    {livenessConfidence !== null && (
-                      <span className="text-white/80 text-xs">
-                        ({(livenessConfidence * 100).toFixed(0)}%)
-                      </span>
-                    )}
                   </div>
                 )}
               </div>
@@ -1035,7 +717,7 @@ export default function AttendancePage() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={trainFaceRecognition}
-                    disabled={isScanning || isTraining}
+                    disabled={isTraining || isBatchScanning}
                     className={`w-full py-2 px-4 border text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${trainingStatus?.needsRetrain
                         ? 'border-yellow-400 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 focus:ring-yellow-500'
                         : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50 focus:ring-blue-500'
@@ -1050,42 +732,6 @@ export default function AttendancePage() {
                   </motion.button>
                 )}
 
-                {/* Scan Buttons */}
-                {!isScanning && !scanComplete && (
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={startFaceRecognition}
-                    className="w-full py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                  >
-                    <div className="flex items-center justify-center">
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                      {trainingStatus?.trained && !trainingStatus?.needsRetrain
-                        ? 'Start Face Scan'
-                        : 'Train & Start Scan'}
-                    </div>
-                  </motion.button>
-                )}
-
-                {isScanning && (
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={stopFaceRecognition}
-                    className="w-full py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
-                  >
-                    <div className="flex items-center justify-center">
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                      </svg>
-                      Stop Scan ({recognizedCount} found)
-                    </div>
-                  </motion.button>
-                )}
-
                 {scanComplete && (
                   <motion.button
                     whileHover={{ scale: 1.02 }}
@@ -1093,6 +739,8 @@ export default function AttendancePage() {
                     onClick={() => {
                       setScanComplete(false);
                       setRecognizedCount(0);
+                      setShowBatchResult(false);
+                      setBatchResult(null);
                     }}
                     className="w-full py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-green-500 hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
                   >
@@ -1105,18 +753,12 @@ export default function AttendancePage() {
                   </motion.button>
                 )}
 
-                {/* Divider */}
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
-                  <div className="relative flex justify-center text-xs"><span className="bg-white px-2 text-gray-400">or</span></div>
-                </div>
-
                 {/* Batch Scan button */}
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={runBatchScan}
-                  disabled={isScanning || isTraining || isBatchScanning}
+                  disabled={isTraining || isBatchScanning}
                   className="w-full py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center justify-center">
@@ -1189,7 +831,7 @@ export default function AttendancePage() {
               )}
 
               {/* Instructions */}
-              {!isScanning && !scanComplete && (
+              {!isBatchScanning && !scanComplete && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1202,10 +844,10 @@ export default function AttendancePage() {
                     <div className="ml-3">
                       <p className="text-sm text-blue-800 font-medium mb-1">How to use:</p>
                       <ol className="text-xs text-blue-700 list-decimal list-inside space-y-1">
-                        <li>Click "Train Model" first (only needed once)</li>
-                        <li><strong>Batch Scan</strong>: gather all students, click "Batch Scan" — one shot marks everyone</li>
-                        <li><strong>Individual Scan</strong>: students walk up one-by-one while scan runs</li>
-                        <li>Manually adjust if needed, then save</li>
+                        <li>Click "Train Model" first (only needed once per class)</li>
+                        <li>Gather all students in view of the camera</li>
+                        <li>Click <strong>Batch Scan</strong> — one shot identifies and marks everyone present</li>
+                        <li>Manually adjust any missed students, then save</li>
                       </ol>
                     </div>
                   </div>
