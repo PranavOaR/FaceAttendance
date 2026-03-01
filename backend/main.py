@@ -123,6 +123,39 @@ class MarkAttendanceResponse(BaseModel):
     message: str
     studentName: Optional[str] = None
 
+# Batch recognition models
+class BatchRecognizeRequest(BaseModel):
+    classId: str
+    image_base64: str
+
+class BatchFaceMatch(BaseModel):
+    faceIndex: int
+    matched: bool
+    studentId: Optional[str] = None
+    studentName: Optional[str] = None
+    confidence: float
+    reason: Optional[str] = None  # e.g. "duplicate"
+    faceBox: Optional[Dict[str, int]] = None  # top, right, bottom, left
+
+class BatchRecognizeResponse(BaseModel):
+    success: bool
+    facesDetected: int
+    matchedCount: int
+    matches: List[BatchFaceMatch]
+    error: Optional[str] = None
+
+# Batch attendance-mark models
+class MarkAttendanceBatchRequest(BaseModel):
+    classId: str
+    studentIds: List[str]
+
+class MarkAttendanceBatchResponse(BaseModel):
+    success: bool
+    markedCount: int
+    markedStudents: List[str]
+    message: str
+    error: Optional[str] = None
+
 @app.get("/")
 async def root():
     """Health check endpoint"""
@@ -279,6 +312,91 @@ async def recognize_face(request: RecognizeRequest):
     except Exception as e:
         print(f"Error in recognize endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Recognition failed: {str(e)}")
+
+@app.post("/recognize_batch", response_model=BatchRecognizeResponse)
+async def recognize_batch(request: BatchRecognizeRequest):
+    """
+    Batch face recognition: detects ALL faces in a single frame and matches each
+    one against the trained embeddings for the given class.
+    Returns a list of per-face results so the frontend can mark multiple students
+    present in a single shot.
+    """
+    try:
+        print(f"Processing batch recognition request for class: {request.classId}")
+
+        # Decode base64 image
+        try:
+            base64_string = request.image_base64
+            if base64_string.startswith('data:image'):
+                base64_string = base64_string.split(',', 1)[1]
+            image_data = base64.b64decode(base64_string)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid base64 image data: {str(e)}")
+
+        # Run batch recognition
+        result = await recognition_service.recognize_all_faces(request.classId, image_data)
+
+        if not result.get("success"):
+            return BatchRecognizeResponse(
+                success=False,
+                facesDetected=0,
+                matchedCount=0,
+                matches=[],
+                error=result.get("error")
+            )
+
+        matches = [
+            BatchFaceMatch(
+                faceIndex=m["faceIndex"],
+                matched=m["matched"],
+                studentId=m.get("studentId"),
+                studentName=m.get("studentName"),
+                confidence=m.get("confidence", 0.0),
+                reason=m.get("reason"),
+                faceBox=m.get("faceBox")
+            )
+            for m in result.get("matches", [])
+        ]
+
+        return BatchRecognizeResponse(
+            success=True,
+            facesDetected=result.get("facesDetected", 0),
+            matchedCount=result.get("matchedCount", 0),
+            matches=matches
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in recognize_batch endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Batch recognition failed: {str(e)}")
+
+@app.post("/mark_attendance_batch", response_model=MarkAttendanceBatchResponse)
+async def mark_attendance_batch(request: MarkAttendanceBatchRequest):
+    """
+    Atomically mark multiple students present in one Firestore transaction.
+    Use this instead of calling /mark_attendance N times to avoid race conditions.
+    """
+    try:
+        if not request.studentIds:
+            return MarkAttendanceBatchResponse(
+                success=True, markedCount=0, markedStudents=[],
+                message="No students to mark"
+            )
+
+        result = await firebase_service.mark_multiple_students_attendance(
+            request.classId, request.studentIds
+        )
+
+        return MarkAttendanceBatchResponse(
+            success=True,
+            markedCount=result['markedCount'],
+            markedStudents=result['markedStudents'],
+            message=f"Marked {result['markedCount']} student(s) present"
+        )
+    except Exception as e:
+        print(f"Error in mark_attendance_batch: {e}")
+        raise HTTPException(status_code=500, detail=f"Batch mark failed: {str(e)}")
 
 @app.post("/mark_attendance", response_model=MarkAttendanceResponse)
 async def mark_attendance(request: MarkAttendanceRequest):

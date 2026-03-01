@@ -27,6 +27,14 @@ export default function AttendancePage() {
   const [recognizedCount, setRecognizedCount] = useState(0);
   const [livenessStatus, setLivenessStatus] = useState<'unknown' | 'live' | 'spoof'>('unknown');
   const [livenessConfidence, setLivenessConfidence] = useState<number | null>(null);
+  const [isBatchScanning, setIsBatchScanning] = useState(false);
+  const [showBatchResult, setShowBatchResult] = useState(false);
+  const [batchResult, setBatchResult] = useState<{
+    facesDetected: number;
+    matchedCount: number;
+    matchedNames: string[];
+    unmatchedCount: number;
+  } | null>(null);
   const [trainingStatus, setTrainingStatus] = useState<{
     trained: boolean;
     needsRetrain: boolean;
@@ -69,17 +77,23 @@ export default function AttendancePage() {
     }
   }, [classData, classLoading, classId, router]);
 
-  // Initialize attendance records when students are loaded
+  // Initialize attendance records when students are loaded.
+  // Important: merge — preserve any 'present' statuses already set by face recognition
+  // so that the Firestore real-time listener firing (same document) doesn't wipe them.
   useEffect(() => {
     if (students.length > 0) {
-      const records: AttendanceRecord[] = students.map(student => ({
-        studentId: student.id,
-        studentName: student.name,
-        srn: student.srn,
-        status: 'absent',
-        photo: student.photo
-      }));
-      setAttendanceRecords(records);
+      setAttendanceRecords(prev => {
+        const existingPresent = new Set(
+          prev.filter(r => r.status === 'present').map(r => r.studentId)
+        );
+        return students.map(student => ({
+          studentId: student.id,
+          studentName: student.name,
+          srn: student.srn,
+          status: existingPresent.has(student.id) ? 'present' : 'absent',
+          photo: student.photo
+        }));
+      });
     }
   }, [students]);
 
@@ -460,6 +474,125 @@ export default function AttendancePage() {
       } else {
         toast.error(`Face recognition failed: ${error.message}`);
       }
+    }
+  };
+
+  // One-shot batch scan: capture a single frame and match ALL faces in it
+  const runBatchScan = async () => {
+    if (!webcamRef.current || !classData) return;
+
+    setIsBatchScanning(true);
+    setBatchResult(null);
+    setShowBatchResult(false);
+
+    try {
+      // Ensure the model is trained before scanning
+      if (!trainingStatus?.trained || trainingStatus?.needsRetrain) {
+        toast.loading('Training model first...', { id: 'batch' });
+        const trained = await trainFaceRecognition();
+        if (!trained) throw new Error('Model training failed. Cannot proceed.');
+      }
+
+      toast.loading('Capturing classroom frame...', { id: 'batch' });
+
+      const imageSrc = webcamRef.current.getScreenshot();
+      if (!imageSrc) throw new Error('Failed to capture image from webcam');
+
+      toast.loading('Recognising all faces in frame...', { id: 'batch' });
+
+      const controller = new AbortController();
+      activeControllersRef.current.add(controller);
+      const timeoutId = setTimeout(() => controller.abort('Batch timeout'), 30000);
+      activeTimeoutsRef.current.add(timeoutId);
+
+      const response = await fetch(`${BACKEND_URL}/recognize_batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classId, image_base64: imageSrc }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      activeTimeoutsRef.current.delete(timeoutId);
+      activeControllersRef.current.delete(controller);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Batch recognition failed: ${errorText}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Batch recognition returned unsuccessful');
+      }
+
+      if (result.facesDetected === 0) {
+        toast.error('No faces detected in the frame. Try better lighting or move closer.', { id: 'batch' });
+        setIsBatchScanning(false);
+        return;
+      }
+
+      // Mark every matched student present
+      const matched = (result.matches as any[]).filter(m => m.matched && m.studentId);
+
+      // Separate new matches from already-recognised ones (from a previous scan)
+      const newMatches = matched.filter(
+        (m: any) => !recognizedStudentsRef.current.has(m.studentId)
+      );
+
+      // Optimistic UI update for ALL matched students (new + already known)
+      setAttendanceRecords(prev => {
+        const updated = [...prev];
+        for (const match of matched) {
+          const idx = updated.findIndex(r => r.studentId === match.studentId);
+          if (idx >= 0) updated[idx] = { ...updated[idx], status: 'present' };
+        }
+        return updated;
+      });
+
+      // Single atomic backend call for only newly-recognised students
+      if (newMatches.length > 0) {
+        const newStudentIds = newMatches.map((m: any) => m.studentId as string);
+        for (const sid of newStudentIds) recognizedStudentsRef.current.add(sid);
+
+        try {
+          const batchRes = await fetch(`${BACKEND_URL}/mark_attendance_batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ classId, studentIds: newStudentIds })
+          });
+          if (!batchRes.ok) {
+            console.error('Batch mark failed:', await batchRes.text());
+          }
+        } catch (err) {
+          console.error('Batch mark error:', err);
+        }
+      }
+
+      setRecognizedCount(recognizedStudentsRef.current.size);
+      setScanComplete(true);
+
+      setBatchResult({
+        facesDetected: result.facesDetected,
+        matchedCount: matched.length,
+        matchedNames: matched.map((m: any) => m.studentName as string),
+        unmatchedCount: result.facesDetected - matched.length
+      });
+      setShowBatchResult(true);
+
+      toast.success(
+        `Batch scan done! Detected ${result.facesDetected} face(s), matched ${matched.length} student(s).`,
+        { id: 'batch', duration: 4000 }
+      );
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        toast.error('Batch scan timed out. Try again.', { id: 'batch' });
+      } else {
+        toast.error(`Batch scan failed: ${error.message}`, { id: 'batch' });
+      }
+    } finally {
+      setIsBatchScanning(false);
     }
   };
 
@@ -971,7 +1104,89 @@ export default function AttendancePage() {
                     </div>
                   </motion.button>
                 )}
+
+                {/* Divider */}
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
+                  <div className="relative flex justify-center text-xs"><span className="bg-white px-2 text-gray-400">or</span></div>
+                </div>
+
+                {/* Batch Scan button */}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={runBatchScan}
+                  disabled={isScanning || isTraining || isBatchScanning}
+                  className="w-full py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center justify-center">
+                    {isBatchScanning ? (
+                      <>
+                        <svg className="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Scanning All Faces...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        Batch Scan (All Faces at Once)
+                      </>
+                    )}
+                  </div>
+                </motion.button>
               </div>
+
+              {/* Batch scan result panel */}
+              {showBatchResult && batchResult && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-md"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="text-sm font-semibold text-purple-900">Batch Scan Results</p>
+                    <button
+                      onClick={() => setShowBatchResult(false)}
+                      className="text-purple-400 hover:text-purple-600 text-xs"
+                    >✕</button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+                    <div className="bg-white rounded p-2 shadow-sm">
+                      <div className="text-lg font-bold text-gray-800">{batchResult.facesDetected}</div>
+                      <div className="text-xs text-gray-500">Faces</div>
+                    </div>
+                    <div className="bg-white rounded p-2 shadow-sm">
+                      <div className="text-lg font-bold text-green-600">{batchResult.matchedCount}</div>
+                      <div className="text-xs text-gray-500">Matched</div>
+                    </div>
+                    <div className="bg-white rounded p-2 shadow-sm">
+                      <div className="text-lg font-bold text-orange-500">{batchResult.unmatchedCount}</div>
+                      <div className="text-xs text-gray-500">Unknown</div>
+                    </div>
+                  </div>
+                  {batchResult.matchedNames.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-purple-800 mb-1">Marked present:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {batchResult.matchedNames.map(name => (
+                          <span key={name} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            ✓ {name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {batchResult.unmatchedCount > 0 && (
+                    <p className="mt-2 text-xs text-orange-700">
+                      {batchResult.unmatchedCount} face(s) not recognised — they may not be enrolled or lighting/angle may need adjustment.
+                    </p>
+                  )}
+                </motion.div>
+              )}
 
               {/* Instructions */}
               {!isScanning && !scanComplete && (
@@ -988,9 +1203,8 @@ export default function AttendancePage() {
                       <p className="text-sm text-blue-800 font-medium mb-1">How to use:</p>
                       <ol className="text-xs text-blue-700 list-decimal list-inside space-y-1">
                         <li>Click "Train Model" first (only needed once)</li>
-                        <li>Click "Start Face Scan" to begin</li>
-                        <li>Position students in front of camera</li>
-                        <li>Click "Stop Scan" when all students are marked</li>
+                        <li><strong>Batch Scan</strong>: gather all students, click "Batch Scan" — one shot marks everyone</li>
+                        <li><strong>Individual Scan</strong>: students walk up one-by-one while scan runs</li>
                         <li>Manually adjust if needed, then save</li>
                       </ol>
                     </div>

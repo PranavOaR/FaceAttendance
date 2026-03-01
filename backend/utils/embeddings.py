@@ -145,6 +145,50 @@ class EmbeddingService:
             print(f"Error extracting face encoding: {e}")
             return None
     
+    def extract_all_face_encodings(self, image_data: bytes, num_jitters: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Extract face encodings for ALL faces detected in an image.
+        Returns a list of dicts: [{encoding, location: (top, right, bottom, left)}, ...]
+        Used for batch/classroom recognition.
+        """
+        try:
+            if num_jitters is None:
+                num_jitters = self.num_jitters
+
+            image_array = self.preprocess_image(image_data, enhance=True)
+            if image_array is None:
+                return []
+
+            face_locations = face_recognition.face_locations(
+                image_array,
+                model=self.face_detection_model
+            )
+
+            if not face_locations:
+                print("No faces found in image")
+                return []
+
+            print(f"Detected {len(face_locations)} face(s) in batch image")
+
+            face_encodings = face_recognition.face_encodings(
+                image_array,
+                face_locations,
+                num_jitters=num_jitters
+            )
+
+            results = []
+            for location, encoding in zip(face_locations, face_encodings):
+                results.append({
+                    "encoding": encoding,
+                    "location": location  # (top, right, bottom, left)
+                })
+
+            return results
+
+        except Exception as e:
+            print(f"Error extracting all face encodings: {e}")
+            return []
+
     def compare_faces(self, known_encodings: List[np.ndarray], unknown_encoding: np.ndarray, tolerance: float = 0.6) -> List[bool]:
         """
         Compare unknown face encoding with known encodings

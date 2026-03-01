@@ -179,6 +179,109 @@ class RecognitionService:
                 "error": f"Recognition failed: {str(e)}"
             }
     
+    async def recognize_all_faces(self, class_id: str, image_data: bytes) -> Dict[str, Any]:
+        """
+        Batch recognition: detect every face in the image and match each one
+        against the class embeddings. Returns a list of individual match results;
+        each unmatched face is still reported so the caller knows the frame had
+        unknown faces.
+        """
+        try:
+            print(f"Starting batch face recognition for class {class_id}")
+
+            known_embeddings = await self.load_class_embeddings(class_id)
+            if not known_embeddings:
+                return {
+                    "success": False,
+                    "error": f"No trained embeddings found for class {class_id}. Please train the model first.",
+                    "matches": []
+                }
+
+            # Extract ALL face encodings from the frame
+            face_data = self.embeddings.extract_all_face_encodings(image_data)
+
+            if not face_data:
+                return {
+                    "success": True,
+                    "facesDetected": 0,
+                    "matches": [],
+                    "message": "No faces detected in the image"
+                }
+
+            print(f"Found {len(face_data)} face(s) to match against {len(known_embeddings)} known students")
+
+            # Pull student names once (avoid repeated Firestore calls)
+            students = await self.firebase.get_class_students(class_id)
+            student_name_map = {s['id']: s['name'] for s in students}
+
+            matched_student_ids: set = set()
+            matches = []
+
+            for i, face in enumerate(face_data):
+                encoding = face["encoding"]
+                location = face["location"]  # (top, right, bottom, left)
+
+                match_result = self.embeddings.find_best_match(
+                    known_embeddings,
+                    encoding,
+                    tolerance=self.recognition_threshold
+                )
+
+                top, right, bottom, left = location
+                face_box = {"top": top, "right": right, "bottom": bottom, "left": left}
+
+                if match_result["matched"]:
+                    student_id = match_result["student_id"]
+
+                    # Guard: don't match the same student twice in one frame
+                    if student_id in matched_student_ids:
+                        print(f"Duplicate match for student {student_id} — skipping")
+                        matches.append({
+                            "faceIndex": i,
+                            "matched": False,
+                            "reason": "duplicate",
+                            "faceBox": face_box,
+                            "confidence": match_result["confidence"]
+                        })
+                        continue
+
+                    matched_student_ids.add(student_id)
+                    student_name = student_name_map.get(student_id, "Unknown")
+                    print(f"Face {i}: matched {student_name} (confidence {match_result['confidence']:.2f})")
+
+                    matches.append({
+                        "faceIndex": i,
+                        "matched": True,
+                        "studentId": student_id,
+                        "studentName": student_name,
+                        "confidence": match_result["confidence"],
+                        "faceBox": face_box
+                    })
+                else:
+                    print(f"Face {i}: no match (best confidence {match_result['confidence']:.2f})")
+                    matches.append({
+                        "faceIndex": i,
+                        "matched": False,
+                        "confidence": match_result["confidence"],
+                        "faceBox": face_box
+                    })
+
+            matched_count = sum(1 for m in matches if m["matched"])
+            return {
+                "success": True,
+                "facesDetected": len(face_data),
+                "matchedCount": matched_count,
+                "matches": matches
+            }
+
+        except Exception as e:
+            print(f"Error in batch face recognition: {e}")
+            return {
+                "success": False,
+                "error": f"Batch recognition failed: {str(e)}",
+                "matches": []
+            }
+
     async def get_recognition_stats(self, class_id: str) -> Dict[str, Any]:
         """Get statistics about the recognition model for a class"""
         try:
