@@ -11,11 +11,11 @@
 ```
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
-║      🛡️  IDGuard - Intelligent Digital Guard System  🛡️      ║
+║      🛡️  IDGuard - Intelligent Digital Guard System  🛡️       ║
 ║                                                               ║
-║     Smart Face Recognition Attendance Management Platform    ║
+║     Smart Face Recognition Attendance Management Platform     ║
 ║                                                               ║
-║          Built with Modern AI & Cloud Technologies           ║
+║          Built with Modern AI & Cloud Technologies            ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
 ```
