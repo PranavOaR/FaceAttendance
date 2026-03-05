@@ -27,6 +27,7 @@ export interface Student {
   photo: string; // base64 or URL
   classId: string;
   parentEmail?: string; // Optional parent email for notifications
+  parentPhone?: string; // Optional parent WhatsApp number for notifications (e.g. +919876543210)
 }
 
 export interface Attendance {

@@ -420,10 +420,11 @@ export default function AttendancePage() {
             return {
               id: record.studentId,
               name: record.studentName,
-              parentEmail: student?.parentEmail || null
+              parentEmail: student?.parentEmail || null,
+              parentPhone: student?.parentPhone || null
             };
           })
-          .filter(s => s.parentEmail);
+          .filter(s => s.parentEmail || s.parentPhone);
 
         if (absentStudentDetails.length > 0) {
           await fetch(`${BACKEND_URL}/notify/absence`, {

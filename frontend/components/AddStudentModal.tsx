@@ -26,11 +26,12 @@ export default function AddStudentModal({
   isEditing = false,
   classId
 }: AddStudentModalProps) {
-  const [formData, setFormData] = useState<AddStudentForm & { parentEmail: string }>({
+  const [formData, setFormData] = useState<AddStudentForm & { parentEmail: string; parentPhone: string }>({
     name: initialData?.name || '',
     srn: initialData?.srn || '',
     photo: null,
-    parentEmail: initialData?.parentEmail || ''
+    parentEmail: initialData?.parentEmail || '',
+    parentPhone: initialData?.parentPhone || ''
   });
   const [photoPreview, setPhotoPreview] = useState<string>(initialData?.photo || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,7 +46,8 @@ export default function AddStudentModal({
         name: initialData?.name || '',
         srn: initialData?.srn || '',
         photo: null,
-        parentEmail: initialData?.parentEmail || ''
+        parentEmail: initialData?.parentEmail || '',
+        parentPhone: initialData?.parentPhone || ''
       });
       setPhotoPreview(initialData?.photo || '');
     }
@@ -124,11 +126,12 @@ export default function AddStudentModal({
         srn: formData.srn.trim().toUpperCase(),
         photo: photoURL,
         classId: classId,
-        parentEmail: formData.parentEmail.trim() || undefined
+        parentEmail: formData.parentEmail.trim() || undefined,
+        parentPhone: formData.parentPhone.trim() || undefined
       };
 
       await onSubmit(studentData);
-      setFormData({ name: '', srn: '', photo: null, parentEmail: '' });
+      setFormData({ name: '', srn: '', photo: null, parentEmail: '', parentPhone: '' });
       setPhotoPreview('');
       onClose();
     } catch (error: any) {
@@ -139,7 +142,7 @@ export default function AddStudentModal({
   };
 
   const handleClose = () => {
-    setFormData(initialData ? { name: initialData.name, srn: initialData.srn, photo: null, parentEmail: initialData.parentEmail || '' } : { name: '', srn: '', photo: null, parentEmail: '' });
+    setFormData(initialData ? { name: initialData.name, srn: initialData.srn, photo: null, parentEmail: initialData.parentEmail || '', parentPhone: initialData.parentPhone || '' } : { name: '', srn: '', photo: null, parentEmail: '', parentPhone: '' });
     setPhotoPreview(initialData?.photo || '');
     onClose();
   };
@@ -224,7 +227,7 @@ export default function AddStudentModal({
                 {/* Parent Email */}
                 <div>
                   <label htmlFor="parentEmail" className="block text-sm font-medium text-gray-700 mb-2">
-                    Parent Email <span className="text-gray-400 font-normal">(for notifications)</span>
+                    Parent Email <span className="text-gray-400 font-normal">(for email notifications)</span>
                   </label>
                   <input
                     type="email"
@@ -232,6 +235,22 @@ export default function AddStudentModal({
                     value={formData.parentEmail}
                     onChange={(e) => setFormData({ ...formData, parentEmail: e.target.value })}
                     placeholder="e.g., parent@email.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                {/* Parent WhatsApp */}
+                <div>
+                  <label htmlFor="parentPhone" className="block text-sm font-medium text-gray-700 mb-2">
+                    Parent WhatsApp Number <span className="text-gray-400 font-normal">(for WhatsApp notifications)</span>
+                  </label>
+                  <input
+                    type="tel"
+                    id="parentPhone"
+                    value={formData.parentPhone}
+                    onChange={(e) => setFormData({ ...formData, parentPhone: e.target.value })}
+                    placeholder="e.g., +919876543210"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     disabled={isSubmitting}
                   />

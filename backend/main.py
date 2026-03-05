@@ -11,6 +11,10 @@ from datetime import datetime
 import sys
 import warnings
 import httpx
+from dotenv import load_dotenv
+
+# Load .env file so credentials are available via os.getenv()
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 
 # Liveness service configuration
 LIVENESS_SERVICE_URL = os.getenv("LIVENESS_SERVICE_URL", "http://localhost:5001")
@@ -44,8 +48,21 @@ except Exception as e:
     print(f"Warning: Could not import EmailService: {e}", file=sys.stderr)
     EmailService = None
 
+try:
+    from utils.whatsapp_service import WhatsAppService
+except Exception as e:
+    print(f"Warning: Could not import WhatsAppService: {e}", file=sys.stderr)
+    WhatsAppService = None
+
 # Resend API Key
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "re_hqx6vNGE_93PmLXHSr9gXweztVWQm2q2a")
+
+# Twilio WhatsApp credentials (loaded from .env)
+TWILIO_ACCOUNT_SID   = os.getenv("TWILIO_ACCOUNT_SID",   "")
+TWILIO_AUTH_TOKEN    = os.getenv("TWILIO_AUTH_TOKEN",    "")
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+# Optional pre-approved Content template SID
+TWILIO_CONTENT_SID   = os.getenv("TWILIO_CONTENT_SID",   "")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -704,7 +721,7 @@ class NotificationRequest(BaseModel):
     className: str
     subject: str
     date: str
-    absentStudents: List[dict]  # [{id, name, parentEmail}]
+    absentStudents: List[dict]  # [{id, name, parentEmail?, parentPhone?}]
     teacherName: str = "Your Teacher"
 
 class NotificationResponse(BaseModel):
@@ -715,46 +732,89 @@ class NotificationResponse(BaseModel):
 # Initialize email service
 email_service = EmailService(RESEND_API_KEY) if EmailService else None
 
+# Initialize WhatsApp service (only if credentials are provided)
+whatsapp_service = None
+if WhatsAppService and TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
+    try:
+        whatsapp_service = WhatsAppService(
+            TWILIO_ACCOUNT_SID,
+            TWILIO_AUTH_TOKEN,
+            TWILIO_WHATSAPP_FROM,
+            content_sid=TWILIO_CONTENT_SID or None,
+        )
+        print("✓ WhatsApp service initialized")
+    except Exception as e:
+        print(f"✗ Failed to initialize WhatsApp service: {e}")
+        whatsapp_service = None
+else:
+    print("ℹ WhatsApp service skipped (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not set)")
+
 @app.post("/notify/absence", response_model=NotificationResponse)
 async def send_absence_notifications(request: NotificationRequest):
     """
-    Send absence notification emails to parents of absent students.
+    Send absence notifications (email + WhatsApp) to parents of absent students.
+    At least one of email_service or whatsapp_service must be available.
     """
-    if not email_service:
-        raise HTTPException(status_code=500, detail="Email service not available")
-    
+    if not email_service and not whatsapp_service:
+        raise HTTPException(status_code=500, detail="No notification service available")
+
     try:
-        notifications = []
-        for student in request.absentStudents:
-            if student.get("parentEmail"):
-                notifications.append({
-                    "parent_email": student["parentEmail"],
-                    "student_name": student["name"],
-                    "class_name": request.className,
-                    "subject_name": request.subject,
-                    "date": request.date
-                })
-        
-        if not notifications:
+        all_results: list = []
+
+        # ── Email notifications ──────────────────────────────────────────
+        if email_service:
+            email_notifications = []
+            for student in request.absentStudents:
+                if student.get("parentEmail"):
+                    email_notifications.append({
+                        "parent_email": student["parentEmail"],
+                        "student_name": student["name"],
+                        "class_name": request.className,
+                        "subject_name": request.subject,
+                        "date": request.date,
+                    })
+            if email_notifications:
+                email_results = email_service.send_bulk_absence_notifications(
+                    email_notifications, teacher_name=request.teacherName
+                )
+                for r in email_results:
+                    r["channel"] = "email"
+                all_results.extend(email_results)
+
+        # ── WhatsApp notifications ────────────────────────────────────────
+        if whatsapp_service:
+            wa_notifications = []
+            for student in request.absentStudents:
+                if student.get("parentPhone"):
+                    wa_notifications.append({
+                        "parent_phone": student["parentPhone"],
+                        "student_name": student["name"],
+                        "class_name": request.className,
+                        "subject_name": request.subject,
+                        "date": request.date,
+                    })
+            if wa_notifications:
+                wa_results = whatsapp_service.send_bulk_absence_notifications(
+                    wa_notifications, teacher_name=request.teacherName
+                )
+                for r in wa_results:
+                    r["channel"] = "whatsapp"
+                all_results.extend(wa_results)
+
+        if not all_results:
             return NotificationResponse(
                 success=True,
-                message="No parent emails to notify",
-                results=[]
+                message="No parent contact details to notify",
+                results=[],
             )
-        
-        results = email_service.send_bulk_absence_notifications(
-            notifications,
-            teacher_name=request.teacherName
-        )
-        
-        success_count = sum(1 for r in results if r.get("success"))
-        
+
+        success_count = sum(1 for r in all_results if r.get("success"))
         return NotificationResponse(
             success=True,
-            message=f"Sent {success_count}/{len(results)} notifications",
-            results=results
+            message=f"Sent {success_count}/{len(all_results)} notifications",
+            results=all_results,
         )
-        
+
     except Exception as e:
         print(f"Error sending notifications: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to send notifications: {str(e)}")
