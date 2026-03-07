@@ -54,6 +54,12 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/embeddings_cache.pkl
 
+# Python virtual environment
+.venv/
+venv/
+env/
+ENV/
+
 # vercel
 .vercel
 
