@@ -24,7 +24,7 @@
 
 ---
 
-## ✨ Features Overview
+## ✨ Features Overview 
 
 <table>
 <tr>
