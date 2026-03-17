@@ -7,7 +7,6 @@
 ![Status](https://img.shields.io/badge/Status-Active-success?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python)
 ![Next.js](https://img.shields.io/badge/Next.js-15.5.4-black?style=for-the-badge&logo=next.js)
-
 ```
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
