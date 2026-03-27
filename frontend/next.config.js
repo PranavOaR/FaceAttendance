@@ -56,7 +56,7 @@ const withPWA = require('next-pwa')({
         expiration: {
           maxEntries: 64,
           maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
-        },
+        }, 
       },
     },
     {
