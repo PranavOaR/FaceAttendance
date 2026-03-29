@@ -1,8 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Student } from '@/lib/types';
-import Image from 'next/image';
 import Link from 'next/link';
 
 interface StudentCardProps {
@@ -12,12 +12,13 @@ interface StudentCardProps {
   attendanceStatus?: 'present' | 'absent' | null;
 }
 
-export default function StudentCard({ 
-  student, 
-  onEdit, 
-  onDelete, 
-  attendanceStatus = null 
+export default function StudentCard({
+  student,
+  onEdit,
+  onDelete,
+  attendanceStatus = null
 }: StudentCardProps) {
+  const [imgError, setImgError] = useState(false);
   const getStatusColor = () => {
     switch (attendanceStatus) {
       case 'present':
@@ -66,12 +67,12 @@ export default function StudentCard({
         {/* Student Photo */}
         <div className="flex justify-center mb-3">
           <div className="relative w-16 h-16 rounded-full overflow-hidden bg-gray-200">
-            {student.photo ? (
-              <Image
+            {student.photo && !imgError ? (
+              <img
                 src={student.photo}
                 alt={student.name}
-                fill
-                className="object-cover"
+                className="absolute inset-0 w-full h-full object-cover"
+                onError={() => setImgError(true)}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gray-300">

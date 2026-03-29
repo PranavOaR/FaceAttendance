@@ -1,6 +1,10 @@
-// Firebase Storage helper for uploading student photos
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+// Student photo upload helper — routes through the backend so the Firebase
+// Admin SDK handles Storage writes (bypasses client-side rules / CORS).
+import { ref, deleteObject } from 'firebase/storage';
 import { storage } from './firebase';
+
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 export interface UploadProgress {
   progress: number;
@@ -9,12 +13,9 @@ export interface UploadProgress {
 }
 
 /**
- * Upload a student photo to Firebase Storage
- * @param file - The image file to upload
- * @param teacherId - The teacher's UID
- * @param classId - The class ID
- * @param studentSRN - The student's SRN (for filename)
- * @returns Promise<string> - The download URL of the uploaded photo
+ * Upload a student photo via the backend API.
+ * The backend stores the file in Firebase Storage with the Admin SDK and
+ * returns a permanent download URL.
  */
 export const uploadStudentPhoto = async (
   file: File,
@@ -23,41 +24,36 @@ export const uploadStudentPhoto = async (
   studentSRN: string,
   onProgress?: (progress: number) => void
 ): Promise<string> => {
-  try {
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      throw new Error('File must be an image');
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      throw new Error('File size must be less than 5MB');
-    }
-
-    // Create storage reference with SRN-based naming for ML training
-    const fileExtension = file.name.split('.').pop() || 'jpg';
-    const fileName = `${studentSRN.toUpperCase()}.${fileExtension}`;
-    const storageRef = ref(storage, `studentPhotos/${teacherId}/${classId}/${fileName}`);
-
-    // Upload file
-    if (onProgress) {
-      onProgress(0);
-    }
-
-    const snapshot = await uploadBytes(storageRef, file);
-    
-    if (onProgress) {
-      onProgress(100);
-    }
-
-    // Get download URL
-    const downloadURL = await getDownloadURL(snapshot.ref);
-    
-    return downloadURL;
-  } catch (error) {
-    console.error('Error uploading photo:', error);
-    throw error;
+  // Client-side validation (fail fast before network request)
+  if (!file.type.startsWith('image/')) {
+    throw new Error('File must be an image');
   }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error('File size must be less than 5MB');
+  }
+
+  if (onProgress) onProgress(0);
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('teacher_id', teacherId);
+  formData.append('class_id', classId);
+  formData.append('student_srn', studentSRN);
+
+  const res = await fetch(`${BACKEND_URL}/upload/student-photo`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Upload failed' }));
+    throw new Error(err.detail || 'Upload failed');
+  }
+
+  if (onProgress) onProgress(100);
+
+  const data = await res.json();
+  return data.photoURL;
 };
 
 /**

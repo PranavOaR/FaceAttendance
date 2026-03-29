@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Class, Student, Attendance } from '@/lib/types';
-import Image from 'next/image';
+/* eslint-disable @next/next/no-img-element */
 import Link from 'next/link';
 import {
   BarChart,
@@ -273,7 +273,12 @@ export default function StudentAnalyticsPage() {
           {/* Photo */}
           <div className="relative w-24 h-24 rounded-full overflow-hidden bg-gray-200 shrink-0 ring-4 ring-indigo-100">
             {student.photo ? (
-              <Image src={student.photo} alt={student.name} fill className="object-cover" />
+              <img
+                src={student.photo}
+                alt={student.name}
+                className="absolute inset-0 w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-indigo-50">
                 <User className="w-10 h-10 text-indigo-400" />

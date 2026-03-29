@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -6,8 +6,10 @@ import uvicorn
 import os
 import json
 import base64
+import uuid
 import numpy as np
 from datetime import datetime
+from urllib.parse import quote
 import sys
 import warnings
 import httpx
@@ -818,6 +820,60 @@ async def send_absence_notifications(request: NotificationRequest):
     except Exception as e:
         print(f"Error sending notifications: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to send notifications: {str(e)}")
+
+@app.post("/upload/student-photo")
+async def upload_student_photo(
+    file: UploadFile = File(...),
+    teacher_id: str = Form(...),
+    class_id: str = Form(...),
+    student_srn: str = Form(...)
+):
+    """
+    Upload a student photo to Firebase Storage via the Admin SDK.
+    This bypasses client-side Storage security rules and CORS issues.
+    Returns a permanent Firebase download URL.
+    """
+    if not firebase_service:
+        raise HTTPException(status_code=500, detail="Firebase service not available")
+
+    try:
+        # Validate file type
+        if not file.content_type or not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+
+        # Read file contents
+        contents = await file.read()
+
+        # Validate size (5MB)
+        if len(contents) > 5 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File must be less than 5MB")
+
+        # Build storage path
+        ext = (file.filename or "photo.jpg").rsplit('.', 1)[-1] or 'jpg'
+        file_name = f"{student_srn.upper()}.{ext}"
+        path = f"studentPhotos/{teacher_id}/{class_id}/{file_name}"
+
+        # Upload via Admin SDK with a download token
+        token = str(uuid.uuid4())
+        blob = firebase_service.bucket.blob(path)
+        blob.metadata = {"firebaseStorageDownloadTokens": token}
+        blob.upload_from_string(contents, content_type=file.content_type)
+
+        # Build Firebase-compatible download URL
+        bucket_name = firebase_service.bucket.name
+        download_url = (
+            f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}"
+            f"/o/{quote(path, safe='')}?alt=media&token={token}"
+        )
+
+        return {"photoURL": download_url}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error uploading student photo: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
 
 if __name__ == "__main__":
     # Run the server
