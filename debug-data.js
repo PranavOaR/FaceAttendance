@@ -1,7 +1,6 @@
 // Debug script to check Firebase data structure
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, collection, getDocs } from 'firebase/firestore';
-
 const firebaseConfig = {
   apiKey: "AIzaSyBRFMy76dN_i5jH8cJ8bqFGG0aDzHKSXgo",
   authDomain: "face-recognition-attendance-db.firebaseapp.com",
