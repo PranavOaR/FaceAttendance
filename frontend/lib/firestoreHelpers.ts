@@ -19,6 +19,22 @@ import {
 import { db } from './firebase';
 import { Teacher, Class, Student, Attendance } from './types';
 
+// Recursively strip undefined values from any value before Firestore writes.
+// Handles nested objects and arrays. Firestore rejects undefined anywhere in the tree.
+const stripUndefined = (data: unknown): unknown => {
+  if (Array.isArray(data)) {
+    return data.map(stripUndefined).filter(v => v !== undefined);
+  }
+  if (data !== null && typeof data === 'object') {
+    return Object.fromEntries(
+      Object.entries(data as Record<string, unknown>)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, stripUndefined(v)])
+    );
+  }
+  return data;
+};
+
 // Collections
 export const COLLECTIONS = {
   TEACHERS: 'teachers',
@@ -252,19 +268,21 @@ export const addStudent = async (classId: string, student: Omit<Student, 'id'>):
     const studentId = doc(collection(db, 'temp')).id;
 
     // Create the new student with the generated ID
-    const newStudent: Student = {
+    const newStudent: Student = stripUndefined({
       id: studentId,
       name: student.name,
       srn: student.srn,
       photo: student.photo,
       classId: student.classId,
-    };
+      parentEmail: student.parentEmail,
+      parentPhone: student.parentPhone,
+    });
 
     // Add the student to the class's students array
     students.push(newStudent);
 
     // Update the class document with the new students array
-    batch.update(classRef, { students });
+    batch.update(classRef, { students: students.map(stripUndefined) });
 
     await batch.commit();
     return studentId;
@@ -359,10 +377,10 @@ export const updateStudent = async (classId: string, student: Student): Promise<
     }
 
     // Update the student in the array
-    students[studentIndex] = student;
+    students[studentIndex] = stripUndefined(student);
 
     // Update the class document with the modified students array
-    batch.update(classRef, { students });
+    batch.update(classRef, { students: students.map(stripUndefined) });
 
     await batch.commit();
   } catch (error) {
@@ -449,8 +467,8 @@ export const deleteStudent = async (classId: string, studentId: string): Promise
 
     // Update the class document
     batch.update(classRef, {
-      students,
-      attendanceRecords: updatedAttendanceRecords
+      students: students.map(stripUndefined),
+      attendanceRecords: updatedAttendanceRecords,
     });
 
     await batch.commit();

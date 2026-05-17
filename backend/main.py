@@ -14,9 +14,19 @@ import sys
 import warnings
 import httpx
 from dotenv import load_dotenv
+import cloudinary
+import cloudinary.uploader
 
 # Load .env file so credentials are available via os.getenv()
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+
+# Configure Cloudinary for student photo storage
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    secure=True,
+)
 
 # Liveness service configuration
 LIVENESS_SERVICE_URL = os.getenv("LIVENESS_SERVICE_URL", "http://localhost:5001")
@@ -829,50 +839,74 @@ async def upload_student_photo(
     student_srn: str = Form(...)
 ):
     """
-    Upload a student photo to Firebase Storage via the Admin SDK.
-    This bypasses client-side Storage security rules and CORS issues.
-    Returns a permanent Firebase download URL.
+    Upload a student photo to Cloudinary.
+    Returns a permanent CDN URL usable by the frontend and the face recognition backend.
     """
-    if not firebase_service:
-        raise HTTPException(status_code=500, detail="Firebase service not available")
+    if not os.getenv("CLOUDINARY_CLOUD_NAME"):
+        raise HTTPException(status_code=500, detail="Cloudinary is not configured")
 
     try:
-        # Validate file type
         if not file.content_type or not file.content_type.startswith('image/'):
             raise HTTPException(status_code=400, detail="File must be an image")
 
-        # Read file contents
         contents = await file.read()
 
-        # Validate size (5MB)
         if len(contents) > 5 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="File must be less than 5MB")
 
-        # Build storage path
-        ext = (file.filename or "photo.jpg").rsplit('.', 1)[-1] or 'jpg'
-        file_name = f"{student_srn.upper()}.{ext}"
-        path = f"studentPhotos/{teacher_id}/{class_id}/{file_name}"
+        # Use a deterministic public_id so re-uploads overwrite the old photo
+        public_id = f"studentPhotos/{teacher_id}/{class_id}/{student_srn.upper()}"
 
-        # Upload via Admin SDK with a download token
-        token = str(uuid.uuid4())
-        blob = firebase_service.bucket.blob(path)
-        blob.metadata = {"firebaseStorageDownloadTokens": token}
-        blob.upload_from_string(contents, content_type=file.content_type)
-
-        # Build Firebase-compatible download URL
-        bucket_name = firebase_service.bucket.name
-        download_url = (
-            f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}"
-            f"/o/{quote(path, safe='')}?alt=media&token={token}"
+        result = cloudinary.uploader.upload(
+            contents,
+            public_id=public_id,
+            overwrite=True,
+            resource_type="image",
         )
 
-        return {"photoURL": download_url}
+        return {"photoURL": result["secure_url"]}
 
     except HTTPException:
         raise
     except Exception as e:
         print(f"Error uploading student photo: {e}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+class DeletePhotoRequest(BaseModel):
+    photoURL: str
+
+
+@app.delete("/delete/student-photo")
+async def delete_student_photo(body: DeletePhotoRequest):
+    """Delete a student photo from Cloudinary using its secure URL."""
+    if not os.getenv("CLOUDINARY_CLOUD_NAME"):
+        raise HTTPException(status_code=500, detail="Cloudinary is not configured")
+
+    try:
+        # Extract the public_id from the Cloudinary URL
+        # URL format: https://res.cloudinary.com/<cloud>/image/upload/v<ver>/<public_id>.<ext>
+        url = body.photoURL
+        upload_index = url.find("/upload/")
+        if upload_index == -1:
+            raise HTTPException(status_code=400, detail="Not a valid Cloudinary URL")
+
+        after_upload = url[upload_index + len("/upload/"):]
+        # Strip optional version segment (v1234567890/)
+        if after_upload.startswith("v") and "/" in after_upload:
+            after_upload = after_upload.split("/", 1)[1]
+
+        # Remove file extension to get the public_id
+        public_id = after_upload.rsplit(".", 1)[0]
+
+        cloudinary.uploader.destroy(public_id, resource_type="image")
+        return {"message": "Photo deleted successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting student photo: {e}")
+        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
 
 
 if __name__ == "__main__":

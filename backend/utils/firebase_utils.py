@@ -15,33 +15,25 @@ class FirebaseService:
         self._initialize_firebase()
     
     def _initialize_firebase(self):
-        """Initialize Firebase Admin with service account"""
+        """Initialize Firebase Admin with service account (Firestore only; Storage is handled by Cloudinary)"""
         try:
-            # Check if Firebase is already initialized
             if not firebase_admin._apps:
-                # Look for service account key
                 service_account_path = "serviceAccountKey.json"
                 if not os.path.exists(service_account_path):
-                    print("Warning: serviceAccountKey.json not found. Please add your Firebase service account key.")
-                    print("For now, using default credentials...")
-                    # Initialize with default credentials for development
+                    print("Warning: serviceAccountKey.json not found.")
                     firebase_admin.initialize_app()
                 else:
-                    # Initialize with service account
                     cred = credentials.Certificate(service_account_path)
-                    firebase_admin.initialize_app(cred, {
-                        "storageBucket": "attendance-marke-5ab29.firebasestorage.app"
-                    })
-                
+                    firebase_admin.initialize_app(cred)
+
                 print("Firebase Admin initialized successfully")
-            
-            # Get Firestore and Storage clients
+
             self.db = firestore.client()
-            self.bucket = storage.bucket()
-            
+            # Storage bucket is no longer used — photos are stored in Cloudinary
+            self.bucket = None
+
         except Exception as e:
             print(f"Error initializing Firebase: {e}")
-            # For development, create mock clients
             self.db = None
             self.bucket = None
     

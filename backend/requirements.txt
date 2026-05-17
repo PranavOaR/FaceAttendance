@@ -12,3 +12,4 @@ python-dotenv==1.0.0
 resend==0.7.0
 httpx==0.26.0
 twilio>=8.0.0
+cloudinary>=1.36.0

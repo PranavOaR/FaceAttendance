@@ -126,8 +126,8 @@ export default function AddStudentModal({
         srn: formData.srn.trim().toUpperCase(),
         photo: photoURL,
         classId: classId,
-        parentEmail: formData.parentEmail.trim() || undefined,
-        parentPhone: formData.parentPhone.trim() || undefined
+        parentEmail: formData.parentEmail.trim() || '',
+        parentPhone: formData.parentPhone.trim() || ''
       };
 
       await onSubmit(studentData);

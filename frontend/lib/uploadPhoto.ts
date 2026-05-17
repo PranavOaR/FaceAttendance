@@ -1,7 +1,4 @@
-// Student photo upload helper — routes through the backend so the Firebase
-// Admin SDK handles Storage writes (bypasses client-side rules / CORS).
-import { ref, deleteObject } from 'firebase/storage';
-import { storage } from './firebase';
+// Student photo upload helper — routes through the backend which stores photos in Cloudinary.
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -14,8 +11,7 @@ export interface UploadProgress {
 
 /**
  * Upload a student photo via the backend API.
- * The backend stores the file in Firebase Storage with the Admin SDK and
- * returns a permanent download URL.
+ * The backend uploads the file to Cloudinary and returns a permanent CDN URL.
  */
 export const uploadStudentPhoto = async (
   file: File,
@@ -86,33 +82,24 @@ export const uploadBase64Photo = async (
 };
 
 /**
- * Delete a student photo from Firebase Storage
- * @param photoURL - The download URL of the photo to delete
+ * Delete a student photo via the backend.
+ * Cloudinary deletions require the API secret, so this is handled server-side.
  */
 export const deleteStudentPhoto = async (photoURL: string): Promise<void> => {
-  try {
-    if (!photoURL) return;
-    
-    // Extract the file path from the download URL
-    // URL format: https://firebasestorage.googleapis.com/v0/b/bucket/o/path%2Fto%2Ffile.jpg?alt=media&token=...
-    const url = new URL(photoURL);
-    const pathMatch = url.pathname.match(/\/o\/(.+)$/);
-    
-    if (!pathMatch) {
-      throw new Error('Invalid Firebase Storage URL');
-    }
-    
-    // Decode the file path
-    const filePath = decodeURIComponent(pathMatch[1]);
-    
-    // Create reference using the file path
-    const photoRef = ref(storage, filePath);
-    
-    // Delete the file
-    await deleteObject(photoRef);
-  } catch (error) {
-    console.error('Error deleting photo:', error);
-    throw error;
+  if (!photoURL) return;
+
+  const BACKEND_URL =
+    process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+  const res = await fetch(`${BACKEND_URL}/delete/student-photo`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ photoURL }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Delete failed' }));
+    throw new Error(err.detail || 'Delete failed');
   }
 };
 
