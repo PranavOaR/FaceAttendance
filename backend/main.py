@@ -201,34 +201,32 @@ async def get_training_status(class_id: str):
     Returns training status and whether retraining is needed.
     """
     try:
-        # Get current student count
+        # Get current student roster
         students = await firebase_service.get_class_students(class_id)
         student_count = len(students)
-        
+        student_ids = {s['id'] for s in students}
+
         # Load existing embeddings
         embeddings = await recognition_service.load_class_embeddings(class_id)
         embedding_count = len(embeddings) if embeddings else 0
-        
-        # Check if all students have embeddings
+        trained_ids = set(embeddings.keys()) if embeddings else set()
+
         is_trained = embedding_count > 0
-        needs_retrain = embedding_count < student_count
-        
+        # Retrain if the embedded ID set doesn't exactly match the current roster
+        # (catches both added students and removed students)
+        needs_retrain = student_ids != trained_ids
+
         # Find students without embeddings
-        untrained_students = []
-        if embeddings and students:
-            trained_ids = set(embeddings.keys())
-            for student in students:
-                if student['id'] not in trained_ids:
-                    untrained_students.append(student['name'])
-        
+        untrained_students = [s['name'] for s in students if s['id'] not in trained_ids]
+
         return {
             "trained": is_trained,
             "studentCount": student_count,
             "embeddingCount": embedding_count,
             "needsRetrain": needs_retrain,
             "untrainedStudents": untrained_students,
-            "message": "Ready for scanning" if is_trained and not needs_retrain else 
-                       "Retraining needed - new students added" if needs_retrain else
+            "message": "Ready for scanning" if is_trained and not needs_retrain else
+                       "Retraining needed - roster changed" if needs_retrain else
                        "Training required"
         }
         

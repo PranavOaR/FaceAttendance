@@ -222,8 +222,10 @@ export default function AttendancePage() {
     setShowBatchResult(false);
 
     try {
-      // Ensure the model is trained before scanning
-      if (!trainingStatus?.trained || trainingStatus?.needsRetrain) {
+      // Only auto-train when there are no embeddings at all.
+      // If needsRetrain is true but there ARE embeddings (e.g. one student's photo is broken),
+      // proceed with the existing embeddings — otherwise every scan triggers an infinite retrain loop.
+      if (!trainingStatus?.trained) {
         toast.loading('Training model first...', { id: 'batch' });
         const trained = await trainFaceRecognition();
         if (!trained) throw new Error('Model training failed. Cannot proceed.');
@@ -270,7 +272,10 @@ export default function AttendancePage() {
       }
 
       // Mark every matched student present
-      const matched = (result.matches as any[]).filter(m => m.matched && m.studentId);
+      const enrolledIds = new Set(students.map(s => s.id));
+      const matched = (result.matches as any[]).filter(
+        m => m.matched && m.studentId && enrolledIds.has(m.studentId)
+      );
 
       // Separate new matches from already-recognised ones (from a previous scan)
       const newMatches = matched.filter(

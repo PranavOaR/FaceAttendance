@@ -269,10 +269,14 @@ class FirebaseService:
             all_student_ids = [s['id'] for s in students]
             student_name_map = {s['id']: s['name'] for s in students}
 
-            # Validate that all requested student IDs exist
+            # Filter out IDs not in the current class roster (stale embeddings are safe to skip)
             invalid = [sid for sid in student_ids if sid not in all_student_ids]
             if invalid:
-                raise Exception(f"Students not found in class: {invalid}")
+                print(f"Warning: Skipping {len(invalid)} unrecognised student IDs (stale embeddings?): {invalid}")
+            valid_student_ids = [sid for sid in student_ids if sid in all_student_ids]
+
+            if not valid_student_ids:
+                return {'markedCount': 0, 'markedStudents': [], 'date': datetime.now().strftime('%Y-%m-%d')}
 
             today = datetime.now().strftime('%Y-%m-%d')
             class_ref = self.db.collection('classes').document(class_id)
@@ -301,14 +305,14 @@ class FirebaseService:
                         'id': f"{class_id}_{today}",
                         'classId': class_id,
                         'date': today,
-                        'presentStudents': list(student_ids),
-                        'absentStudents': [sid for sid in all_student_ids if sid not in student_ids]
+                        'presentStudents': list(valid_student_ids),
+                        'absentStudents': [sid for sid in all_student_ids if sid not in valid_student_ids]
                     }
                     attendance_records.append(today_record)
                 else:
                     present = list(today_record.get('presentStudents', []))
                     absent  = list(today_record.get('absentStudents', []))
-                    for sid in student_ids:
+                    for sid in valid_student_ids:
                         if sid not in present:
                             present.append(sid)
                         if sid in absent:
@@ -323,11 +327,11 @@ class FirebaseService:
             transaction = self.db.transaction()
             today_record = update_in_transaction(transaction, class_ref)
 
-            marked_names = [student_name_map.get(sid, sid) for sid in student_ids]
-            print(f"Batch-marked {len(student_ids)} students present in class {class_id}: {marked_names}")
+            marked_names = [student_name_map.get(sid, sid) for sid in valid_student_ids]
+            print(f"Batch-marked {len(valid_student_ids)} students present in class {class_id}: {marked_names}")
 
             return {
-                'markedCount': len(student_ids),
+                'markedCount': len(valid_student_ids),
                 'markedStudents': marked_names,
                 'date': today
             }

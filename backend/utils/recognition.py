@@ -12,7 +12,7 @@ class RecognitionService:
         # Recognition threshold for face distance (lower = more strict)
         # 0.6 is the recommended default for face_recognition library
         # 0.5 = strict (may miss some matches), 0.6 = balanced, 0.7 = lenient (more false positives)
-        self.recognition_threshold = 0.55  # Balanced threshold (0.6 is library default)
+        self.recognition_threshold = 0.6  # Library default — 0.55 was rejecting valid matches
     
     async def train_class_embeddings(self, class_id: str, students: List[Dict[str, Any]]) -> int:
         """
@@ -233,6 +233,18 @@ class RecognitionService:
                 if match_result["matched"]:
                     student_id = match_result["student_id"]
 
+                    # Skip stale embeddings — student was removed from class after last training
+                    if student_id not in student_name_map:
+                        print(f"Face {i}: stale embedding {student_id} not in current roster — treating as no match")
+                        matches.append({
+                            "faceIndex": i,
+                            "matched": False,
+                            "reason": "stale_embedding",
+                            "faceBox": face_box,
+                            "confidence": match_result["confidence"]
+                        })
+                        continue
+
                     # Guard: don't match the same student twice in one frame
                     if student_id in matched_student_ids:
                         print(f"Duplicate match for student {student_id} — skipping")
@@ -246,7 +258,7 @@ class RecognitionService:
                         continue
 
                     matched_student_ids.add(student_id)
-                    student_name = student_name_map.get(student_id, "Unknown")
+                    student_name = student_name_map[student_id]
                     print(f"Face {i}: matched {student_name} (confidence {match_result['confidence']:.2f})")
 
                     matches.append({

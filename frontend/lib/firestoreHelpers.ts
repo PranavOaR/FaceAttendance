@@ -268,7 +268,7 @@ export const addStudent = async (classId: string, student: Omit<Student, 'id'>):
     const studentId = doc(collection(db, 'temp')).id;
 
     // Create the new student with the generated ID
-    const newStudent: Student = stripUndefined({
+    const newStudent = stripUndefined({
       id: studentId,
       name: student.name,
       srn: student.srn,
@@ -276,7 +276,7 @@ export const addStudent = async (classId: string, student: Omit<Student, 'id'>):
       classId: student.classId,
       parentEmail: student.parentEmail,
       parentPhone: student.parentPhone,
-    });
+    }) as Student;
 
     // Add the student to the class's students array
     students.push(newStudent);
@@ -377,7 +377,7 @@ export const updateStudent = async (classId: string, student: Student): Promise<
     }
 
     // Update the student in the array
-    students[studentIndex] = stripUndefined(student);
+    students[studentIndex] = stripUndefined(student) as Student;
 
     // Update the class document with the modified students array
     batch.update(classRef, { students: students.map(stripUndefined) });
